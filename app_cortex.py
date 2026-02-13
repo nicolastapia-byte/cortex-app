@@ -16,12 +16,12 @@ st.set_page_config(
     layout="centered"
 )
 
-# Estilos CSS (Animaciones del Agente)
+# Estilos CSS (Agente Serio B&W)
 st.markdown("""
     <style>
     .stButton>button {
         width: 100%;
-        background-color: #2E5CB8;
+        background-color: #2E5CB8; /* Mantenemos el Azul Corporativo para el botón */
         color: white;
         font-weight: 600;
         border-radius: 6px;
@@ -35,23 +35,34 @@ st.markdown("""
         transform: scale(1.02);
     }
     
-    /* ESTADOS DEL ROBOT */
+    /* --- ESTADOS DEL ROBOT (BLANCO Y NEGRO) --- */
+    
+    /* 1. Robot Zen (Reposo B&W) */
     .robot-zen {
         font-size: 100px;
         text-align: center;
         animation: float 3s ease-in-out infinite;
+        filter: grayscale(100%); /* <-- FILTRO B&W */
+        opacity: 0.9;
     }
+    
+    /* 2. Robot Pensando (Procesando B&W) */
     .robot-thinking {
         font-size: 100px;
         text-align: center;
         animation: pulse 0.5s infinite;
+        filter: grayscale(100%) contrast(1.2); /* B&W con más contraste */
     }
+
+    /* 3. Robot Éxito (Terminado B&W) */
     .robot-success {
         font-size: 100px;
         text-align: center;
         animation: bounce 1s ease infinite;
+        filter: grayscale(100%); /* <-- FILTRO B&W */
     }
 
+    /* --- ANIMACIONES --- */
     @keyframes float {
         0% { transform: translateY(0px); }
         50% { transform: translateY(-10px); }
@@ -72,14 +83,14 @@ st.markdown("""
 # --- 2. SIDEBAR DINÁMICO ---
 with st.sidebar:
     robot_placeholder = st.empty()
-    # Estado 1: Robot en Reposo
+    # Estado 1: Robot Zen B&W
     robot_placeholder.markdown('<div class="robot-zen">🤖</div>', unsafe_allow_html=True)
     
     st.title("Cortex AI")
     st.markdown("**Agente de Auditoría Pública**")
     st.markdown("---")
     st.success("✅ Sistema Operativo")
-    st.info("ℹ️ Versión: Universal V22.0")
+    st.info("ℹ️ Versión: Titanium V23.0 (B&W)")
 
 # --- 3. ENCABEZADO ---
 st.title("🤖 Cortex: Análisis de Bases Públicas")
@@ -105,10 +116,9 @@ def limpiar_y_reparar_json(texto):
 # --- 6. LÓGICA ---
 if uploaded_file is not None:
     
-    # BOTÓN GENÉRICO
     if st.button("⚡ EJECUTAR AUDITORÍA DE RIESGOS"):
         
-        # Estado 2: Robot Pensando
+        # Estado 2: Robot Pensando B&W
         robot_placeholder.markdown('<div class="robot-thinking">⚡</div>', unsafe_allow_html=True)
         
         status_box = st.empty()
@@ -142,7 +152,7 @@ if uploaded_file is not None:
             archivo_gemini = genai.upload_file(tmp_path)
             bar.progress(40)
             
-            # D. PROMPT (ESTÁNDAR EXPERTO - SIN MARCAS)
+            # D. PROMPT (ESTÁNDAR EXPERTO)
             prompt = """
             ACTÚA COMO UN AUDITOR EXPERTO EN COMPRAS PÚBLICAS Y LICITACIONES.
             Tu objetivo es proteger al oferente detectando RIESGOS, MULTAS y ERRORES FORMALES.
@@ -185,7 +195,7 @@ if uploaded_file is not None:
             bar.progress(100)
             status_box.success("✅ ¡Auditoría Finalizada!")
             
-            # Estado 3: Robot Exitoso
+            # Estado 3: Robot Éxito B&W
             robot_placeholder.markdown('<div class="robot-success">😎</div>', unsafe_allow_html=True)
             
             # DASHBOARD
@@ -196,7 +206,7 @@ if uploaded_file is not None:
                 with c2:
                     st.warning(f"⚠️ **Garantías y Glosas:**\n\n{datos.get('garantia_seriedad', '-')}")
             
-            # F. EXCEL (NOMBRE GENÉRICO)
+            # F. EXCEL
             df = pd.DataFrame([datos])
             cols_deseadas = ['id_licitacion', 'inadmisibilidad', 'fechas', 'garantia_seriedad', 'garantia_cumplimiento', 'multas', 'cenabast', 'productos']
             cols_finales = [c for c in cols_deseadas if c in df.columns] + [c for c in df.columns if c not in cols_deseadas]
@@ -217,17 +227,12 @@ if uploaded_file is not None:
                 for col_num, value in enumerate(df.columns.values):
                     worksheet.write(0, col_num, str(value).upper(), fmt_header)
                     col = str(value).lower()
-                    if 'inadmisibilidad' in col or 'multas' in col: 
-                        worksheet.set_column(col_num, col_num, 40, fmt_risk)
-                    elif 'garantia' in col: 
-                        worksheet.set_column(col_num, col_num, 35, fmt_alert)
-                    else: 
-                        worksheet.set_column(col_num, col_num, 25, fmt_normal)
+                    if 'inadmisibilidad' in col or 'multas' in col: worksheet.set_column(col_num, col_num, 40, fmt_risk)
+                    elif 'garantia' in col: worksheet.set_column(col_num, col_num, 35, fmt_alert)
+                    else: worksheet.set_column(col_num, col_num, 25, fmt_normal)
 
             st.divider()
-            # NOMBRE DE ARCHIVO GENÉRICO
             filename = f"Reporte_Cortex_{datos.get('id_licitacion', 'Licitacion')}.xlsx"
-            
             st.download_button(
                 label="📥 DESCARGAR REPORTE CORTEX",
                 data=buffer,
@@ -237,6 +242,7 @@ if uploaded_file is not None:
             os.remove(tmp_path)
             
             time.sleep(5)
+            # Volver a Zen B&W
             robot_placeholder.markdown('<div class="robot-zen">🤖</div>', unsafe_allow_html=True)
 
         except Exception as e:
