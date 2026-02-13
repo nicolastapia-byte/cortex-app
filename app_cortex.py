@@ -15,11 +15,12 @@ st.set_page_config(
     layout="centered"
 )
 
+# Estilos CSS (Azul Tecnológico)
 st.markdown("""
     <style>
     .stButton>button {
         width: 100%;
-        background-color: #2E5CB8; /* Azul Tech Cortex */
+        background-color: #2E5CB8;
         color: white;
         font-weight: 600;
         border-radius: 6px;
@@ -33,23 +34,25 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. SIDEBAR (MARCA CORTEX) ---
+# --- 2. SIDEBAR (CORREGIDO) ---
 with st.sidebar:
-    # Logo de Cerebro Digital (Cortex)
-    st.image("https://cdn-icons-png.flaticon.com/512/12395/12395369.png", width=80)
+    # Aquí estaba el error del "43". Ahora ponemos el logo correctamente.
+    st.image("https://cdn-icons-png.flaticon.com/512/12395/12395369.png", width=90)
+    
     st.title("Cortex AI")
     st.markdown("**Powered by Sentinela**")
+    
     st.success("✅ Sistema Operativo")
-    st.info("ℹ️ Versión: Global V13.0")
+    st.info("ℹ️ Versión: Global V14.0")
 
-# --- 3. ENCABEZADO ---
+# --- 3. ENCABEZADO PRINCIPAL ---
 st.title("🧠 Cortex: Auditoría de Licitaciones")
 st.markdown("Plataforma de inteligencia artificial para detección de **Riesgos, Multas y Garantías** en bases públicas.")
 
 # --- 4. INPUT ---
 uploaded_file = st.file_uploader("📂 Cargue las Bases Administrativas (PDF):", type=["pdf"])
 
-# --- 5. LIMPIEZA Y REPARACIÓN ---
+# --- 5. FUNCIONES DE LIMPIEZA ---
 def limpiar_y_reparar_json(texto):
     try:
         texto = re.sub(r'```json', '', texto)
@@ -100,7 +103,7 @@ if uploaded_file is not None:
             archivo_gemini = genai.upload_file(tmp_path)
             bar.progress(40)
             
-            # D. PROMPT UNIVERSAL (PARA CUALQUIER CLIENTE)
+            # D. PROMPT GLOBAL
             prompt = """
             ACTÚA COMO UN EXPERTO GERENTE DE LICITACIONES.
             Analiza el PDF adjunto y extrae los datos críticos en formato JSON.
@@ -143,7 +146,7 @@ if uploaded_file is not None:
             c1.error(f"🚨 **Multas:**\n{datos.get('multas', '-')}")
             c2.info(f"📦 **Logística:**\n{datos.get('cenabast', '-')}")
             
-            # F. GENERAR EXCEL CORTEX
+            # F. GENERAR EXCEL
             df = pd.DataFrame([datos])
             
             # Orden
@@ -159,7 +162,7 @@ if uploaded_file is not None:
                 workbook = writer.book
                 worksheet = writer.sheets['Reporte_Cortex']
                 
-                # Estilos Cortex (Azul Tech)
+                # Estilos Cortex
                 fmt_header = workbook.add_format({'bold': True, 'bg_color': '#2E5CB8', 'font_color': 'white', 'border': 1})
                 fmt_risk = workbook.add_format({'bg_color': '#FFC7CE', 'text_wrap': True, 'border': 1})
                 fmt_normal = workbook.add_format({'text_wrap': True, 'border': 1})
