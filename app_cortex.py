@@ -11,12 +11,12 @@ import time
 
 # --- 1. CONFIGURACIÓN VISUAL ---
 st.set_page_config(
-    page_title="Cortex AI - Auditoría",
+    page_title="Cortex AI - Auditoría Pública",
     page_icon="🤖",
     layout="centered"
 )
 
-# Estilos CSS (Animaciones Avanzadas)
+# Estilos CSS (Animaciones del Agente)
 st.markdown("""
     <style>
     .stButton>button {
@@ -35,28 +35,23 @@ st.markdown("""
         transform: scale(1.02);
     }
     
-    /* 1. ROBOT ZEN (Flotando suave) */
+    /* ESTADOS DEL ROBOT */
     .robot-zen {
         font-size: 100px;
         text-align: center;
         animation: float 3s ease-in-out infinite;
     }
-    
-    /* 2. ROBOT PENSANDO (Pulsando rápido) */
     .robot-thinking {
         font-size: 100px;
         text-align: center;
-        animation: pulse 0.8s infinite;
+        animation: pulse 0.5s infinite;
     }
-
-    /* 3. ROBOT FELIZ (Rebote) */
     .robot-success {
         font-size: 100px;
         text-align: center;
         animation: bounce 1s ease infinite;
     }
 
-    /* DEFINICIÓN DE ANIMACIONES */
     @keyframes float {
         0% { transform: translateY(0px); }
         50% { transform: translateY(-10px); }
@@ -74,25 +69,24 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. SIDEBAR CON PLACEHOLDER ---
+# --- 2. SIDEBAR DINÁMICO ---
 with st.sidebar:
-    # Creamos un ESPACIO VACÍO que podemos actualizar después
     robot_placeholder = st.empty()
-    # Estado inicial: Robot Zen
+    # Estado 1: Robot en Reposo
     robot_placeholder.markdown('<div class="robot-zen">🤖</div>', unsafe_allow_html=True)
     
     st.title("Cortex AI")
-    st.markdown("**Agente Digital de Sentinela**")
+    st.markdown("**Agente de Auditoría Pública**")
     st.markdown("---")
-    st.success("✅ Sistema Calibrado")
-    st.info("ℹ️ Versión: Alive V21.0")
+    st.success("✅ Sistema Operativo")
+    st.info("ℹ️ Versión: Universal V22.0")
 
 # --- 3. ENCABEZADO ---
-st.title("🤖 Cortex: Auditoría Experta")
-st.markdown("Soy **Cortex**, tu agente de IA. He sido actualizado con los criterios de Gador para detectar **Inadmisibilidad y Riesgos**.")
+st.title("🤖 Cortex: Análisis de Bases Públicas")
+st.markdown("Soy **Cortex**, tu agente de IA experto en detectar **Riesgos, Multas y Glosas** en licitaciones del Estado.")
 
 # --- 4. INPUT ---
-uploaded_file = st.file_uploader("📂 Cargar Bases (PDF):", type=["pdf"])
+uploaded_file = st.file_uploader("📂 Cargar Bases Administrativas (PDF):", type=["pdf"])
 
 # --- 5. LIMPIEZA ---
 def limpiar_y_reparar_json(texto):
@@ -111,9 +105,10 @@ def limpiar_y_reparar_json(texto):
 # --- 6. LÓGICA ---
 if uploaded_file is not None:
     
-    if st.button("⚡ ACTIVAR CORTEX"):
+    # BOTÓN GENÉRICO
+    if st.button("⚡ EJECUTAR AUDITORÍA DE RIESGOS"):
         
-        # CAMBIO DE ESTADO 1: MODO PENSANDO (Robot vibra)
+        # Estado 2: Robot Pensando
         robot_placeholder.markdown('<div class="robot-thinking">⚡</div>', unsafe_allow_html=True)
         
         status_box = st.empty()
@@ -121,7 +116,7 @@ if uploaded_file is not None:
         
         try:
             # A. CONEXIÓN
-            status_box.info("🔐 Conectando cerebro digital...")
+            status_box.info("🔐 Cortex: Conectando a servidores seguros...")
             if "GOOGLE_API_KEY" in st.secrets:
                 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             else:
@@ -133,13 +128,13 @@ if uploaded_file is not None:
                 modelos = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                 modelo_elegido = next((m for m in modelos if 'flash' in m and '1.5' in m), None) or modelos[0]
             except:
-                st.error("❌ Error de conexión.")
+                st.error("❌ Error de conexión AI.")
                 st.stop()
             
             bar.progress(20)
             
             # C. LECTURA
-            status_box.info("👁️ Leyendo y comprendiendo el PDF...")
+            status_box.info("👁️ Cortex: Escaneando documento legal...")
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_path = tmp_file.name
@@ -147,60 +142,61 @@ if uploaded_file is not None:
             archivo_gemini = genai.upload_file(tmp_path)
             bar.progress(40)
             
-            # D. PROMPT (CRITERIO GADOR - PILAR)
+            # D. PROMPT (ESTÁNDAR EXPERTO - SIN MARCAS)
             prompt = """
-            ACTÚA COMO UN EXPERTO EN LICITACIONES PÚBLICAS.
+            ACTÚA COMO UN AUDITOR EXPERTO EN COMPRAS PÚBLICAS Y LICITACIONES.
+            Tu objetivo es proteger al oferente detectando RIESGOS, MULTAS y ERRORES FORMALES.
             
-            CRITERIOS DE REVISIÓN (GADOR):
-            1. FECHAS: Busca "PLAZOS" (días hábiles/corridos) no solo fechas calendario.
-            2. VIGENCIA DE OFERTA: Si la oferta tiene MENOR vigencia a la solicitada -> RIESGO DE INADMISIBILIDAD.
-            3. GLOSA: Extrae el TEXTO LITERAL exigido para la garantía.
-            4. INADMISIBILIDAD: Relaciona errores en Glosa y Vigencia como causales de rechazo.
+            PROTOCOLOS DE REVISIÓN (ESTÁNDAR EXPERTO):
+            1. PLAZOS Y FECHAS: No extraigas solo fechas. Busca los "PLAZOS" (ej: "30 días corridos desde la adjudicación").
+            2. VIGENCIA DE LA OFERTA: Identifica la vigencia exigida. Si la oferta tiene MENOR vigencia a la solicitada, márcalo como CAUSAL DE RECHAZO.
+            3. GLOSA DE GARANTÍA: Extrae el TEXTO LITERAL (Glosa) que exigen las bases para la boleta de garantía. Si hay una glosa específica, debes copiarla tal cual.
+            4. INADMISIBILIDAD: Relaciona errores en la Glosa, Vigencia insuficiente o falta de documentos como causales críticas.
 
-            Extrae JSON ESTRICTO:
+            Extrae en JSON ESTRICTO (sin saltos de línea en valores):
             {
                 "id_licitacion": "ID Propuesta",
-                "fechas": "Plazos y Fechas Clave",
-                "productos": "Resumen Productos",
-                "cenabast": "Faltante/Intermediación (SI/NO)",
-                "presupuesto": "Monto Total",
-                "garantia_seriedad": "Monto, VIGENCIA y GLOSA EXACTA",
-                "garantia_cumplimiento": "Monto, VIGENCIA y GLOSA EXACTA",
-                "duracion_contrato": "Vigencia contrato",
-                "reajuste": "IPC (SI/NO)",
-                "suscripcion_contrato": "Plazo firma",
-                "plazo_entrega": "Plazos entrega",
-                "vencimiento_canje": "Política Canje",
-                "multas": "Resumen Multas",
-                "inadmisibilidad": "CAUSALES DE RECHAZO (Vigencia, Glosa, etc)"
+                "fechas": "Plazos claves (Días hábiles/corridos, Apertura)",
+                "productos": "Resumen Productos/Servicios",
+                "cenabast": "Mención a Intermediación/Faltante (SI/NO)",
+                "presupuesto": "Monto Total Estimado",
+                "garantia_seriedad": "Monto, VIGENCIA y GLOSA LITERAL REQUERIDA",
+                "garantia_cumplimiento": "Monto, VIGENCIA y GLOSA LITERAL REQUERIDA",
+                "duracion_contrato": "Vigencia del contrato",
+                "reajuste": "Cláusula de Reajuste (IPC/Otro)",
+                "suscripcion_contrato": "Plazo para firma",
+                "plazo_entrega": "Plazos de entrega y Multas por atraso",
+                "vencimiento_canje": "Política de Canje/Vencimiento",
+                "multas": "Resumen de Multas y Sanciones",
+                "inadmisibilidad": "CAUSALES DE RECHAZO (Vigencia, Glosa, Formatos)"
             }
             """
             
-            status_box.info(f"⚡ Analizando riesgos críticos...")
+            status_box.info(f"⚡ Cortex: Auditando cumplimiento normativo...")
             model = genai.GenerativeModel(modelo_elegido)
             response = model.generate_content([prompt, archivo_gemini])
             
             bar.progress(80)
             
             # E. REPORTE
-            status_box.info("📝 Redactando informe...")
+            status_box.info("📝 Cortex: Generando reporte oficial...")
             datos = limpiar_y_reparar_json(response.text)
             
             bar.progress(100)
-            status_box.success("✅ ¡Análisis Terminado!")
+            status_box.success("✅ ¡Auditoría Finalizada!")
             
-            # CAMBIO DE ESTADO 2: MODO ÉXITO (Robot Cool)
+            # Estado 3: Robot Exitoso
             robot_placeholder.markdown('<div class="robot-success">😎</div>', unsafe_allow_html=True)
             
             # DASHBOARD
             with st.container():
                 c1, c2 = st.columns(2)
                 with c1:
-                    st.error(f"🚫 **Inadmisibilidad:**\n\n{datos.get('inadmisibilidad', '-')}")
+                    st.error(f"🚫 **Riesgos de Rechazo:**\n\n{datos.get('inadmisibilidad', '-')}")
                 with c2:
-                    st.warning(f"⚠️ **Garantías:**\n\n{datos.get('garantia_seriedad', '-')}")
+                    st.warning(f"⚠️ **Garantías y Glosas:**\n\n{datos.get('garantia_seriedad', '-')}")
             
-            # F. EXCEL
+            # F. EXCEL (NOMBRE GENÉRICO)
             df = pd.DataFrame([datos])
             cols_deseadas = ['id_licitacion', 'inadmisibilidad', 'fechas', 'garantia_seriedad', 'garantia_cumplimiento', 'multas', 'cenabast', 'productos']
             cols_finales = [c for c in cols_deseadas if c in df.columns] + [c for c in df.columns if c not in cols_deseadas]
@@ -208,9 +204,9 @@ if uploaded_file is not None:
 
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, sheet_name='Reporte_Cortex', index=False)
+                df.to_excel(writer, sheet_name='Auditoria_Cortex', index=False)
                 workbook = writer.book
-                worksheet = writer.sheets['Reporte_Cortex']
+                worksheet = writer.sheets['Auditoria_Cortex']
                 
                 fmt_header = workbook.add_format({'bold': True, 'bg_color': '#2E5CB8', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
                 fmt_risk = workbook.add_format({'bg_color': '#FFC7CE', 'text_wrap': True, 'border': 1, 'valign': 'top'})
@@ -221,24 +217,28 @@ if uploaded_file is not None:
                 for col_num, value in enumerate(df.columns.values):
                     worksheet.write(0, col_num, str(value).upper(), fmt_header)
                     col = str(value).lower()
-                    if 'inadmisibilidad' in col or 'multas' in col: worksheet.set_column(col_num, col_num, 40, fmt_risk)
-                    elif 'garantia' in col: worksheet.set_column(col_num, col_num, 35, fmt_alert)
-                    else: worksheet.set_column(col_num, col_num, 25, fmt_normal)
+                    if 'inadmisibilidad' in col or 'multas' in col: 
+                        worksheet.set_column(col_num, col_num, 40, fmt_risk)
+                    elif 'garantia' in col: 
+                        worksheet.set_column(col_num, col_num, 35, fmt_alert)
+                    else: 
+                        worksheet.set_column(col_num, col_num, 25, fmt_normal)
 
             st.divider()
+            # NOMBRE DE ARCHIVO GENÉRICO
+            filename = f"Reporte_Cortex_{datos.get('id_licitacion', 'Licitacion')}.xlsx"
+            
             st.download_button(
-                label="📥 DESCARGAR REPORTE CORTEX (V21)",
+                label="📥 DESCARGAR REPORTE CORTEX",
                 data=buffer,
-                file_name=f"Cortex_{datos.get('id_licitacion', 'Reporte')}.xlsx",
+                file_name=filename,
                 mime="application/vnd.ms-excel"
             )
             os.remove(tmp_path)
             
-            # Volver a estado normal después de 5 segundos (opcional, pero da un toque pro)
             time.sleep(5)
             robot_placeholder.markdown('<div class="robot-zen">🤖</div>', unsafe_allow_html=True)
 
         except Exception as e:
-            st.error(f"❌ Error: {e}")
-            # Si falla, robot triste o mareado
+            st.error(f"❌ Error del Sistema: {e}")
             robot_placeholder.markdown('<div class="robot-zen">😵</div>', unsafe_allow_html=True)
