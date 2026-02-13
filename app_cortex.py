@@ -11,7 +11,7 @@ import ast
 # --- 1. CONFIGURACIÓN VISUAL ---
 st.set_page_config(
     page_title="Cortex AI - Auditoría",
-    page_icon="🤖",  # Icono de Robot en la pestaña del navegador
+    page_icon="🤖",
     layout="centered"
 )
 
@@ -35,36 +35,32 @@ st.markdown("""
     .stProgress > div > div > div > div {
         background-color: #2E5CB8;
     }
-    /* AJUSTE PARA EL ROBOT EN HD */
-    [data-testid="stSidebar"] .stImage {
+    /* ESTILO PARA EL ROBOT GIGANTE */
+    .robot-avatar {
+        font-size: 100px;
         text-align: center;
-        display: block;
-        margin-left: auto;
-        margin-right: auto;
-        width: 100%;
+        margin-bottom: 10px;
+        animation: float 3s ease-in-out infinite;
     }
-    [data-testid="stSidebar"] img {
-        max-width: 220px; 
-        border-radius: 15px; /* Bordes redondeados para el avatar */
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1); /* Sombra suave */
+    /* Una pequeña animación de "flotar" para que se vea vivo */
+    @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+        100% { transform: translateY(0px); }
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. SIDEBAR (IDENTIDAD ROBOT) ---
+# --- 2. SIDEBAR (ROBOT CORTEX) ---
 with st.sidebar:
-    # AQUI BUSCAMOS AL ROBOT
-    try:
-        st.image("robot_cortex.png", use_container_width=True) 
-    except:
-        st.warning("⚠️ Sube la imagen 'robot_cortex.png' a GitHub.")
-        st.header("🤖 Cortex AI")
-
+    # EL ROBOT GIGANTE (HTML PURO)
+    st.markdown('<div class="robot-avatar">🤖</div>', unsafe_allow_html=True)
+    
     st.title("Cortex AI")
     st.markdown("**Agente Digital de Sentinela**")
     st.markdown("---")
     st.success("✅ Sistema Operativo")
-    st.info("ℹ️ Versión: Agent V18.0")
+    st.info("ℹ️ Versión: Pure V19.0")
 
 # --- 3. ENCABEZADO ---
 st.title("🤖 Cortex: Auditoría de Licitaciones")
@@ -126,7 +122,7 @@ if uploaded_file is not None:
             archivo_gemini = genai.upload_file(tmp_path)
             bar.progress(40)
             
-            # D. PROMPT (PERSONALIDAD AGENTE)
+            # D. PROMPT
             prompt = """
             ERES CORTEX, UN ROBOT AUDITOR EXPERTO DE LA EMPRESA SENTINELA.
             Tu misión es proteger al cliente encontrando riesgos en este PDF.
