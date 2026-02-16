@@ -74,7 +74,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. SIDEBAR ---
+# --- 2. SIDEBAR CON HERRAMIENTAS DE MANTENIMIENTO ---
 with st.sidebar:
     robot_spot = st.empty()
     robot_spot.markdown('<div class="robot-container robot-zen">🤖</div>', unsafe_allow_html=True)
@@ -82,11 +82,21 @@ with st.sidebar:
     st.markdown("**Enterprise Edition**")
     st.markdown("---")
     st.success("🟢 **Matriz:** 24 Puntos")
-    st.info("🧬 **Versión:** Dedicated V28.0")
+    st.info("🧬 **Versión:** V29.0 (Auto-Clean)")
+    
+    st.markdown("---")
+    # Botón de emergencia por si acaso
+    if st.button("🧹 PURGAR MEMORIA"):
+        if "GOOGLE_API_KEY" in st.secrets:
+            genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+            with st.spinner("Limpiando nube..."):
+                try:
+                    for f in genai.list_files(): f.delete()
+                    st.success("✅ Memoria limpia.")
+                except: st.error("Error al limpiar.")
 
-# --- 3. ENCABEZADO (AQUÍ ESTÁ EL CAMBIO) ---
+# --- 3. ENCABEZADO ---
 st.title("🧠 Cortex: Auditoría Matriz 24")
-# Texto ajustado según tu solicitud:
 st.markdown("Soy **Cortex**, agente para analizar bases de manera dedicada.")
 
 # --- 4. INPUT ---
@@ -116,6 +126,8 @@ if uploaded_file is not None:
         status_box = st.empty()
         bar = st.progress(0)
         
+        archivo_gemini = None # Variable para controlar el borrado
+        
         try:
             # A. CONEXIÓN
             status_box.info("🔐 Cortex: Conectando motor neural...")
@@ -135,48 +147,47 @@ if uploaded_file is not None:
             
             bar.progress(20)
             
-            # C. LECTURA
-            status_box.info("👁️ Cortex: Leyendo bases técnicas y administrativas...")
+            # C. LECTURA Y SUBIDA
+            status_box.info("👁️ Cortex: Procesando documento...")
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_path = tmp_file.name
-
+            
+            # Subida a la nube
             archivo_gemini = genai.upload_file(tmp_path)
             bar.progress(40)
             
             # D. PROMPT (ESTRICTO 24 PUNTOS)
             prompt = """
-            ACTÚA COMO UN AUDITOR EXPERTO EN LICITACIONES PÚBLICAS (MERCADO PÚBLICO CHILE).
+            ACTÚA COMO UN AUDITOR EXPERTO EN LICITACIONES PÚBLICAS.
             Tu tarea es extraer INFORMACIÓN EXACTA para llenar una matriz de 24 columnas.
-            
             Si un dato no aparece, responde explícitamente "NO INDICA".
             
-            Genera un JSON con las siguientes claves (c1 a c24):
-            
-            1.  "c01": ID de la Licitación.
-            2.  "c02": Fecha preguntas y fechas de cierre (ambas).
-            3.  "c03": Plazos de la licitación (Cronograma general).
-            4.  "c04": Productos ofertados (Principios activos o servicios requeridos).
-            5.  "c05": Presupuesto estimado de la institución.
-            6.  "c06": Boletas de Garantía (Seriedad Y Fiel Cumplimiento - Montos y glosas).
-            7.  "c07": Duración de la licitación (Vigencia del contrato).
-            8.  "c08": Vigencia mínima de la propuesta (Validez de la oferta).
-            9.  "c09": ¿Tiene reajuste la licitación? (SI/NO y detalle).
-            10. "c10": ¿Hay suscripción de contrato? (SI/NO).
-            11. "c11": Anexos de admisibilidad requeridos.
-            12. "c12": Pauta evaluativa (Criterios y porcentajes).
+            Genera un JSON con las siguientes claves (c01 a c24):
+            1. "c01": ID Licitación.
+            2. "c02": Fecha preguntas y cierre.
+            3. "c03": Plazos licitación.
+            4. "c04": Productos ofertados (Principios activos).
+            5. "c05": Presupuesto institución.
+            6. "c06": Boletas Garantía (Monto/Glosa).
+            7. "c07": Duración contrato.
+            8. "c08": Vigencia mínima propuesta.
+            9. "c09": Reajuste (SI/NO).
+            10. "c10": Suscripción contrato (SI/NO).
+            11. "c11": Anexos admisibilidad.
+            12. "c12": Pauta evaluativa.
             13. "c13": Requisitos administrativos.
             14. "c14": Requisitos técnicos.
             15. "c15": Requisitos económicos.
-            16. "c16": Plazo de entrega (Incluir tiempos en caso de emergencia).
+            16. "c16": Plazo entrega (inc. emergencia).
             17. "c17": Monto mínimo.
-            18. "c18": ¿Es faltante Cenabast o Intermediación? (SI/NO).
-            19. "c19": Detección de glosa a ofertar (Texto literal de la garantía).
-            20. "c20": Vencimiento mínimo a ofertar (Vida útil del producto).
-            21. "c21": Canje y sus condiciones (Política de devolución).
-            22. "c22": Causales de inadmisibilidad (Errores fatales, vigencias, glosas).
-            23. "c23": ¿Solicita formato de experiencia? (SI/NO).
-            24. "c24": Multas asociadas (Tabla de sanciones).
+            18. "c18": Faltante Cenabast (SI/NO).
+            19. "c19": Glosa Textual Garantía.
+            20. "c20": Vencimiento mínimo ofertar.
+            21. "c21": Canje y condiciones.
+            22. "c22": Causales inadmisibilidad.
+            23. "c23": Formato experiencia (SI/NO).
+            24. "c24": Multas asociadas.
             """
             
             status_box.info(f"⚡ Cortex: Extrayendo 24 puntos críticos...")
@@ -185,61 +196,42 @@ if uploaded_file is not None:
             
             bar.progress(85)
             
-            # E. PROCESAMIENTO Y FORZADO DE COLUMNAS
-            status_box.info("📝 Cortex: Estructurando Matriz Maestra...")
+            # E. PROCESAMIENTO
+            status_box.info("📝 Cortex: Estructurando reporte...")
             datos_raw = limpiar_y_reparar_json(response.text)
             
-            # --- RED DE SEGURIDAD PARA 24 COLUMNAS ---
+            # MAPA DE 24 COLUMNAS
             mapa_columnas = {
-                "c01": "1. ID",
-                "c02": "2. Fecha preguntas, fechas de cierre",
-                "c03": "3. Plazos de la licitación",
-                "c04": "4. Productos ofertados",
-                "c05": "5. Presupuesto institución",
-                "c06": "6. Boleta de garantía",
-                "c07": "7. Duración de la licitación",
-                "c08": "8. Vigencia mínima de la propuesta",
-                "c09": "9. Si tiene reajuste la licitación",
-                "c10": "10. Hay suscripción de contrato",
-                "c11": "11. Anexos de admisibilidad",
-                "c12": "12. Pauta evaluativa",
-                "c13": "13. Requisitos administrativos",
-                "c14": "14. Requisitos técnicos",
-                "c15": "15. Requisitos económicos",
-                "c16": "16. Plazo de entrega (inc. emergencia)",
-                "c17": "17. Monto mínimo",
-                "c18": "18. Si es faltante Cenabast",
-                "c19": "19. Detección de glosa a ofertar",
-                "c20": "20. Vencimiento mínimo a ofertar",
-                "c21": "21. Canje y sus condiciones",
-                "c22": "22. Causales de inadmisibilidad",
-                "c23": "23. Solicita formato de experiencia",
-                "c24": "24. Multas asociadas"
+                "c01": "1. ID", "c02": "2. Fecha preguntas, fechas de cierre", "c03": "3. Plazos de la licitación",
+                "c04": "4. Productos ofertados", "c05": "5. Presupuesto institución", "c06": "6. Boleta de garantía",
+                "c07": "7. Duración de la licitación", "c08": "8. Vigencia mínima de la propuesta", "c09": "9. Si tiene reajuste la licitación",
+                "c10": "10. Hay suscripción de contrato", "c11": "11. Anexos de admisibilidad", "c12": "12. Pauta evaluativa",
+                "c13": "13. Requisitos administrativos", "c14": "14. Requisitos técnicos", "c15": "15. Requisitos económicos",
+                "c16": "16. Plazo de entrega (inc. emergencia)", "c17": "17. Monto mínimo", "c18": "18. Si es faltante Cenabast",
+                "c19": "19. Detección de glosa a ofertar", "c20": "20. Vencimiento mínimo a ofertar", "c21": "21. Canje y sus condiciones",
+                "c22": "22. Causales de inadmisibilidad", "c23": "23. Solicita formato de experiencia", "c24": "24. Multas asociadas"
             }
             
-            # Creamos un diccionario final ordenado. Si falta un dato, ponemos "No detectado"
             datos_finales = {}
             for clave_json, titulo_excel in mapa_columnas.items():
                 datos_finales[titulo_excel] = datos_raw.get(clave_json, "No detectado")
             
             bar.progress(100)
-            status_box.success("✅ Matriz 24x Generada.")
+            status_box.success("✅ Matriz Generada.")
             
             # ANIMACIÓN VICTORIA
             robot_spot.markdown('<div class="robot-container robot-success">😎</div>', unsafe_allow_html=True)
             
-            # DASHBOARD PRELIMINAR (Solo puntos clave)
+            # DASHBOARD
             with st.container():
                 c1, c2 = st.columns(2)
                 with c1:
-                    st.error(f"🚫 **Inadmisibilidad (22):**\n\n{datos_finales['22. Causales de inadmisibilidad']}")
+                    st.error(f"🚫 **Inadmisibilidad:**\n\n{datos_finales['22. Causales de inadmisibilidad']}")
                 with c2:
-                    st.warning(f"⚠️ **Glosa Garantía (19):**\n\n{datos_finales['19. Detección de glosa a ofertar']}")
+                    st.warning(f"⚠️ **Garantías:**\n\n{datos_finales['19. Detección de glosa a ofertar']}")
             
-            # F. GENERAR EXCEL
+            # F. EXCEL
             df = pd.DataFrame([datos_finales])
-            
-            # Aseguramos que el orden de columnas sea el correcto (1 a 24)
             columnas_ordenadas = list(mapa_columnas.values())
             df = df[columnas_ordenadas]
 
@@ -248,27 +240,27 @@ if uploaded_file is not None:
                 df.to_excel(writer, sheet_name='Matriz_Cortex', index=False)
                 workbook = writer.book
                 worksheet = writer.sheets['Matriz_Cortex']
-                
-                # Estilos
                 fmt_header = workbook.add_format({'bold': True, 'bg_color': '#1e3c72', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True})
                 fmt_body = workbook.add_format({'text_wrap': True, 'border': 1, 'valign': 'top'})
-                
-                worksheet.set_row(0, 50) # Cabecera alta
-                
+                worksheet.set_row(0, 50)
                 for col_num, value in enumerate(df.columns.values):
                     worksheet.write(0, col_num, str(value), fmt_header)
-                    # Ajuste de ancho según contenido estimado
-                    width = 40 if "inadmisibilidad" in str(value).lower() or "multas" in str(value).lower() else 25
+                    width = 40 if "inadmisibilidad" in str(value).lower() else 25
                     worksheet.set_column(col_num, col_num, width, fmt_body)
 
             st.divider()
             filename = f"Reporte_Cortex_24P_{datos_finales.get('1. ID', 'General')}.xlsx"
             st.download_button(
-                label="📥 DESCARGAR REPORTE (24 COLUMNAS)",
+                label="📥 DESCARGAR REPORTE",
                 data=buffer,
                 file_name=filename,
                 mime="application/vnd.ms-excel"
             )
+            
+            # === AUTO-LIMPIEZA ===
+            # Borramos el archivo de la nube para no llenar la memoria
+            if archivo_gemini:
+                archivo_gemini.delete()
             os.remove(tmp_path)
             
             time.sleep(4)
@@ -277,3 +269,6 @@ if uploaded_file is not None:
         except Exception as e:
             st.error(f"❌ Error: {e}")
             robot_spot.markdown('<div class="robot-container robot-zen">😵</div>', unsafe_allow_html=True)
+            st.error(f"❌ Error: {e}")
+            robot_spot.markdown('<div class="robot-container robot-zen">😵</div>', unsafe_allow_html=True)
+
