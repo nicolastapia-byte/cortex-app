@@ -11,8 +11,8 @@ import time
 
 # --- 1. CONFIGURACIÓN VISUAL ---
 st.set_page_config(
-    page_title="Cortex AI - Auditoría Dedicada",
-    page_icon="🤖",
+    page_title="Cortex AI - Acceso Seguro",
+    page_icon="🔒",
     layout="centered"
 )
 
@@ -35,6 +35,16 @@ st.markdown("""
         transform: translateY(-3px) scale(1.02);
         box-shadow: 0 8px 25px rgba(42, 82, 152, 0.6);
     }
+    /* Estilos Login */
+    .login-container {
+        padding: 2rem;
+        border-radius: 10px;
+        background-color: #f0f2f6;
+        text-align: center;
+        margin-top: 50px;
+    }
+    
+    /* Animaciones Robot */
     .robot-container {
         font-size: 120px;
         text-align: center;
@@ -74,35 +84,63 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. SIDEBAR CON HERRAMIENTAS DE MANTENIMIENTO ---
+# --- 2. SISTEMA DE LOGIN DE SEGURIDAD ---
+def check_password():
+    """Retorna True si el usuario ingresó la clave correcta."""
+    
+    # Si no hay clave configurada en secrets, dejamos pasar (Modo Desarrollo)
+    if "PASSWORD_ACCESO" not in st.secrets:
+        st.warning("⚠️ ADVERTENCIA DE SEGURIDAD: No se ha configurado 'PASSWORD_ACCESO' en Secrets.")
+        return True
+
+    if "password_correct" not in st.session_state:
+        st.session_state.password_correct = False
+
+    if st.session_state.password_correct:
+        return True
+
+    # Pantalla de Login
+    st.markdown("<h1 style='text-align: center;'>🔒 Acceso Restringido</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>Sistema Cortex AI - Solo Personal Autorizado</p>", unsafe_allow_html=True)
+    
+    password_input = st.text_input("Ingrese Credencial de Acceso:", type="password")
+    
+    if st.button("🔐 INICIAR SESIÓN"):
+        if password_input == st.secrets["PASSWORD_ACCESO"]:
+            st.session_state.password_correct = True
+            st.rerun()
+        else:
+            st.error("❌ Credencial Incorrecta. Acceso Denegado.")
+    
+    return False
+
+if not check_password():
+    st.stop()  # Detiene la ejecución si no hay login
+
+# --- 3. APLICACIÓN CORTEX (Solo carga si pasó el login) ---
+
+# --- SIDEBAR ---
 with st.sidebar:
     robot_spot = st.empty()
     robot_spot.markdown('<div class="robot-container robot-zen">🤖</div>', unsafe_allow_html=True)
     st.title("Cortex AI")
     st.markdown("**Enterprise Edition**")
     st.markdown("---")
-    st.success("🟢 **Matriz:** 24 Puntos")
-    st.info("🧬 **Versión:** V29.0 (Auto-Clean)")
+    st.success("🟢 **Acceso:** Seguro (SSL)")
+    st.info("🧬 **Versión:** Secure V30.0")
     
-    st.markdown("---")
-    # Botón de emergencia por si acaso
-    if st.button("🧹 PURGAR MEMORIA"):
-        if "GOOGLE_API_KEY" in st.secrets:
-            genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-            with st.spinner("Limpiando nube..."):
-                try:
-                    for f in genai.list_files(): f.delete()
-                    st.success("✅ Memoria limpia.")
-                except: st.error("Error al limpiar.")
+    if st.button("🚪 CERRAR SESIÓN"):
+        st.session_state.password_correct = False
+        st.rerun()
 
-# --- 3. ENCABEZADO ---
+# --- ENCABEZADO ---
 st.title("🧠 Cortex: Auditoría Matriz 24")
 st.markdown("Soy **Cortex**, agente para analizar bases de manera dedicada.")
 
-# --- 4. INPUT ---
+# --- INPUT ---
 uploaded_file = st.file_uploader("📂 Cargar Bases (PDF):", type=["pdf"])
 
-# --- 5. LIMPIEZA ---
+# --- FUNCIONES ---
 def limpiar_y_reparar_json(texto):
     try:
         texto = re.sub(r'```json', '', texto)
@@ -116,7 +154,7 @@ def limpiar_y_reparar_json(texto):
         try: return ast.literal_eval(json_str)
         except: return {}
 
-# --- 6. LÓGICA ---
+# --- LÓGICA ---
 if uploaded_file is not None:
     
     if st.button("⚡ GENERAR MATRIZ 24 COLUMNAS"):
@@ -126,11 +164,11 @@ if uploaded_file is not None:
         status_box = st.empty()
         bar = st.progress(0)
         
-        archivo_gemini = None # Variable para controlar el borrado
+        archivo_gemini = None 
         
         try:
             # A. CONEXIÓN
-            status_box.info("🔐 Cortex: Conectando motor neural...")
+            status_box.info("🔐 Cortex: Verificando encriptación...")
             if "GOOGLE_API_KEY" in st.secrets:
                 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             else:
@@ -148,16 +186,15 @@ if uploaded_file is not None:
             bar.progress(20)
             
             # C. LECTURA Y SUBIDA
-            status_box.info("👁️ Cortex: Procesando documento...")
+            status_box.info("👁️ Cortex: Procesando documento seguro...")
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_path = tmp_file.name
             
-            # Subida a la nube
             archivo_gemini = genai.upload_file(tmp_path)
             bar.progress(40)
             
-            # D. PROMPT (ESTRICTO 24 PUNTOS)
+            # D. PROMPT (24 PUNTOS)
             prompt = """
             ACTÚA COMO UN AUDITOR EXPERTO EN LICITACIONES PÚBLICAS.
             Tu tarea es extraer INFORMACIÓN EXACTA para llenar una matriz de 24 columnas.
@@ -190,14 +227,14 @@ if uploaded_file is not None:
             24. "c24": Multas asociadas.
             """
             
-            status_box.info(f"⚡ Cortex: Extrayendo 24 puntos críticos...")
+            status_box.info(f"⚡ Cortex: Auditando cumplimiento normativo...")
             model = genai.GenerativeModel(modelo_elegido)
             response = model.generate_content([prompt, archivo_gemini])
             
             bar.progress(85)
             
             # E. PROCESAMIENTO
-            status_box.info("📝 Cortex: Estructurando reporte...")
+            status_box.info("📝 Cortex: Estructurando reporte blindado...")
             datos_raw = limpiar_y_reparar_json(response.text)
             
             # MAPA DE 24 COLUMNAS
@@ -258,7 +295,6 @@ if uploaded_file is not None:
             )
             
             # === AUTO-LIMPIEZA ===
-            # Borramos el archivo de la nube para no llenar la memoria
             if archivo_gemini:
                 archivo_gemini.delete()
             os.remove(tmp_path)
@@ -269,6 +305,3 @@ if uploaded_file is not None:
         except Exception as e:
             st.error(f"❌ Error: {e}")
             robot_spot.markdown('<div class="robot-container robot-zen">😵</div>', unsafe_allow_html=True)
-            st.error(f"❌ Error: {e}")
-            robot_spot.markdown('<div class="robot-container robot-zen">😵</div>', unsafe_allow_html=True)
-
