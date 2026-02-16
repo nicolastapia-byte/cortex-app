@@ -11,110 +11,87 @@ import time
 
 # --- 1. CONFIGURACIÓN VISUAL ---
 st.set_page_config(
-    page_title="Cortex AI - Auditoría Pública",
+    page_title="Cortex AI - Matriz Gador",
     page_icon="🤖",
     layout="centered"
 )
 
-# --- CSS PREMIUM: ANIMACIONES REACTIVAS ---
+# --- CSS QUANTUM (Animaciones) ---
 st.markdown("""
     <style>
-    /* Botón Principal Estilizado */
     .stButton>button {
         width: 100%;
-        background-color: #2E5CB8;
+        background: linear-gradient(45deg, #1e3c72, #2a5298);
         color: white;
         font-weight: 700;
-        border-radius: 8px;
+        border-radius: 10px;
         padding: 0.8rem;
         font-size: 18px;
         border: none;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
     .stButton>button:hover {
-        background-color: #1F4085;
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(0,0,0,0.3);
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 25px rgba(42, 82, 152, 0.6);
     }
-    
-    /* --- ESTADOS DEL AGENTE CORTEX (B&W) --- */
-    
-    /* CLASE BASE PARA EL CONTENEDOR DEL ROBOT */
     .robot-container {
-        font-size: 110px;
+        font-size: 120px;
         text-align: center;
-        margin-bottom: 20px;
-        /* Filtro B&W para seriedad corporativa */
-        filter: grayscale(100%);
+        margin-bottom: 25px;
+        filter: grayscale(100%) drop-shadow(0 10px 10px rgba(0,0,0,0.5));
         transition: all 0.5s ease;
+        perspective: 1000px;
     }
-
-    /* ESTADO 1: ZEN (Flotando suave en reposo) */
-    .robot-zen {
-        animation: float-zen 4s ease-in-out infinite;
-        opacity: 0.9;
-    }
-    
-    /* ESTADO 2: PENSANDO (Vibrando y procesando) */
+    .robot-zen { animation: float-breathe 4s ease-in-out infinite; }
     .robot-thinking {
-        animation: processing-pulse 0.4s infinite alternate;
-        filter: grayscale(100%) contrast(1.3); /* Más contraste al pensar */
+        font-size: 125px;
+        filter: grayscale(100%) contrast(1.5) drop-shadow(0 0 15px rgba(255,255,255,0.8));
+        animation: glitch-skew 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite both;
     }
-
-    /* ESTADO 3: ÉXITO (Salto de victoria) */
     .robot-success {
-        font-size: 120px; /* Un poco más grande al celebrar */
-        animation: victory-bounce 1s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+        font-size: 130px;
+        filter: grayscale(100%);
+        animation: backflip-victory 1.2s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
     }
-
-    /* --- DEFINICIÓN DE LAS ANIMACIONES --- */
-    @keyframes float-zen {
-        0%, 100% { transform: translateY(0px); }
-        50% { transform: translateY(-12px); }
+    @keyframes float-breathe {
+        0%, 100% { transform: translateY(0); filter: grayscale(100%) drop-shadow(0 10px 5px rgba(0,0,0,0.3)); }
+        50% { transform: translateY(-15px); filter: grayscale(100%) drop-shadow(0 25px 15px rgba(0,0,0,0.1)); }
     }
-    
-    /* Animación de "cerebro trabajando" (vibración + escala) */
-    @keyframes processing-pulse {
-        0% { transform: scale(1) rotate(0deg); opacity: 0.8; }
-        100% { transform: scale(1.08) rotate(2deg); opacity: 1; }
+    @keyframes glitch-skew {
+        0% { transform: translate(0); }
+        20% { transform: translate(-3px, 3px) skewX(5deg); }
+        40% { transform: translate(-3px, -3px) skewX(-5deg); }
+        60% { transform: translate(3px, 3px) skewX(5deg); }
+        80% { transform: translate(3px, -3px) skewX(-5deg); }
+        100% { transform: translate(0); }
     }
-
-    /* Animación de salto de victoria */
-    @keyframes victory-bounce {
-        0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
-        40% {transform: translateY(-35px);}
-        60% {transform: translateY(-20px);}
+    @keyframes backflip-victory {
+        0% { transform: scale(1) rotateY(0deg); }
+        50% { transform: scale(0.5) rotateY(180deg); }
+        100% { transform: scale(1.1) rotateY(360deg); }
     }
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. SIDEBAR CON AGENTE REACTIVO ---
+# --- 2. SIDEBAR ---
 with st.sidebar:
-    # --- AQUÍ OCURRE LA MAGIA ---
-    # Creamos un marcador de posición (placeholder) vacío.
-    # Esto nos permite cambiar lo que hay dentro dinámicamente.
     robot_spot = st.empty()
-    
-    # Estado Inicial: Renderizamos al Robot Zen
     robot_spot.markdown('<div class="robot-container robot-zen">🤖</div>', unsafe_allow_html=True)
-    # ---------------------------
-    
     st.title("Cortex AI")
-    st.markdown("**Agente de Auditoría Pública**")
+    st.markdown("**Enterprise Edition**")
     st.markdown("---")
-    # Indicadores de estado más elegantes
-    st.markdown("🟢 **Sistema:** Operativo")
-    st.markdown("ℹ️ **Versión:** Platinum V24.0")
+    st.success("🟢 **Matriz:** 24 Puntos")
+    st.info("🧬 **Versión:** Precision V27.0")
 
-# --- 3. ENCABEZADO PRINCIPAL ---
-st.title("🧠 Cortex: Análisis de Bases Públicas")
-st.markdown("Soy **Cortex**, tu agente de IA experto en detectar **Riesgos, Multas y Glosas** en licitaciones del Estado.")
+# --- 3. ENCABEZADO ---
+st.title("🧠 Cortex: Auditoría Matriz 24")
+st.markdown("Soy **Cortex**. Analizo las bases y genero el reporte con las **24 columnas críticas** solicitadas.")
 
-# --- 4. INPUT DE ARCHIVO ---
-uploaded_file = st.file_uploader("📂 Cargar Bases Administrativas (PDF):", type=["pdf"])
+# --- 4. INPUT ---
+uploaded_file = st.file_uploader("📂 Cargar Bases (PDF):", type=["pdf"])
 
-# --- 5. FUNCIONES DE LIMPIEZA (Robustas) ---
+# --- 5. LIMPIEZA ---
 def limpiar_y_reparar_json(texto):
     try:
         texto = re.sub(r'```json', '', texto)
@@ -126,23 +103,21 @@ def limpiar_y_reparar_json(texto):
         return json.loads(json_str, strict=False)
     except:
         try: return ast.literal_eval(json_str)
-        except: return {"multas": "Error lectura", "id_licitacion": "ERROR"}
+        except: return {}
 
-# --- 6. LÓGICA CORE ---
+# --- 6. LÓGICA ---
 if uploaded_file is not None:
     
-    if st.button("⚡ EJECUTAR AUDITORÍA DE RIESGOS"):
+    if st.button("⚡ GENERAR MATRIZ 24 COLUMNAS"):
         
-        # 🔥 CAMBIO DE ESTADO 1: MODO PENSANDO 🔥
-        # Reemplazamos el robot Zen por el robot Pensando (vibrando)
-        robot_spot.markdown('<div class="robot-container robot-thinking">🤖</div>', unsafe_allow_html=True)
-        
+        # ANIMACIÓN THINKING
+        robot_spot.markdown('<div class="robot-container robot-thinking">⚡</div>', unsafe_allow_html=True)
         status_box = st.empty()
         bar = st.progress(0)
         
         try:
             # A. CONEXIÓN
-            status_box.info("🔐 Cortex: Estableciendo enlace seguro...")
+            status_box.info("🔐 Cortex: Conectando motor neural...")
             if "GOOGLE_API_KEY" in st.secrets:
                 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             else:
@@ -152,16 +127,15 @@ if uploaded_file is not None:
             # B. MODELO
             try:
                 modelos = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                # Prioridad a modelos rápidos (Flash) para que el robot piense rápido
                 modelo_elegido = next((m for m in modelos if 'flash' in m and '1.5' in m), None) or modelos[0]
             except:
-                st.error("❌ Error de conexión AI.")
+                st.error("❌ Error conexión AI.")
                 st.stop()
             
             bar.progress(20)
             
             # C. LECTURA
-            status_box.info("👁️ Cortex: Escaneando y procesando PDF...")
+            status_box.info("👁️ Cortex: Leyendo bases técnicas y administrativas...")
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_path = tmp_file.name
@@ -169,103 +143,137 @@ if uploaded_file is not None:
             archivo_gemini = genai.upload_file(tmp_path)
             bar.progress(40)
             
-            # D. PROMPT (CEREBRO EXPERTO)
+            # D. PROMPT (ESTRICTO 24 PUNTOS)
             prompt = """
-            ACTÚA COMO UN AUDITOR EXPERTO EN COMPRAS PÚBLICAS Y LICITACIONES.
-            Tu objetivo es proteger al oferente detectando RIESGOS, MULTAS y ERRORES FORMALES.
+            ACTÚA COMO UN AUDITOR EXPERTO EN LICITACIONES PÚBLICAS (MERCADO PÚBLICO CHILE).
+            Tu tarea es extraer INFORMACIÓN EXACTA para llenar una matriz de 24 columnas.
             
-            PROTOCOLOS DE REVISIÓN (ESTÁNDAR EXPERTO):
-            1. PLAZOS Y FECHAS: No extraigas solo fechas. Busca los "PLAZOS" (ej: "30 días corridos desde la adjudicación").
-            2. VIGENCIA DE LA OFERTA: Identifica la vigencia exigida. Si la oferta tiene MENOR vigencia a la solicitada, márcalo como CAUSAL DE RECHAZO.
-            3. GLOSA DE GARANTÍA: Extrae el TEXTO LITERAL (Glosa) que exigen las bases para la boleta de garantía. Si hay una glosa específica, debes copiarla tal cual.
-            4. INADMISIBILIDAD: Relaciona errores en la Glosa, Vigencia insuficiente o falta de documentos como causales críticas.
-
-            Extrae en JSON ESTRICTO (sin saltos de línea en valores):
-            {
-                "id_licitacion": "ID Propuesta",
-                "fechas": "Plazos claves (Días hábiles/corridos, Apertura)",
-                "productos": "Resumen Productos/Servicios",
-                "cenabast": "Mención a Intermediación/Faltante (SI/NO)",
-                "presupuesto": "Monto Total Estimado",
-                "garantia_seriedad": "Monto, VIGENCIA y GLOSA LITERAL REQUERIDA",
-                "garantia_cumplimiento": "Monto, VIGENCIA y GLOSA LITERAL REQUERIDA",
-                "duracion_contrato": "Vigencia del contrato",
-                "reajuste": "Cláusula de Reajuste (IPC/Otro)",
-                "suscripcion_contrato": "Plazo para firma",
-                "plazo_entrega": "Plazos de entrega y Multas por atraso",
-                "vencimiento_canje": "Política de Canje/Vencimiento",
-                "multas": "Resumen de Multas y Sanciones",
-                "inadmisibilidad": "CAUSALES DE RECHAZO (Vigencia, Glosa, Formatos)"
-            }
+            Si un dato no aparece, responde explícitamente "NO INDICA".
+            
+            Genera un JSON con las siguientes claves (c1 a c24):
+            
+            1.  "c01": ID de la Licitación.
+            2.  "c02": Fecha preguntas y fechas de cierre (ambas).
+            3.  "c03": Plazos de la licitación (Cronograma general).
+            4.  "c04": Productos ofertados (Principios activos o servicios requeridos).
+            5.  "c05": Presupuesto estimado de la institución.
+            6.  "c06": Boletas de Garantía (Seriedad Y Fiel Cumplimiento - Montos y glosas).
+            7.  "c07": Duración de la licitación (Vigencia del contrato).
+            8.  "c08": Vigencia mínima de la propuesta (Validez de la oferta).
+            9.  "c09": ¿Tiene reajuste la licitación? (SI/NO y detalle).
+            10. "c10": ¿Hay suscripción de contrato? (SI/NO).
+            11. "c11": Anexos de admisibilidad requeridos.
+            12. "c12": Pauta evaluativa (Criterios y porcentajes).
+            13. "c13": Requisitos administrativos.
+            14. "c14": Requisitos técnicos.
+            15. "c15": Requisitos económicos.
+            16. "c16": Plazo de entrega (Incluir tiempos en caso de emergencia).
+            17. "c17": Monto mínimo.
+            18. "c18": ¿Es faltante Cenabast o Intermediación? (SI/NO).
+            19. "c19": Detección de glosa a ofertar (Texto literal de la garantía).
+            20. "c20": Vencimiento mínimo a ofertar (Vida útil del producto).
+            21. "c21": Canje y sus condiciones (Política de devolución).
+            22. "c22": Causales de inadmisibilidad (Errores fatales, vigencias, glosas).
+            23. "c23": ¿Solicita formato de experiencia? (SI/NO).
+            24. "c24": Multas asociadas (Tabla de sanciones).
             """
             
-            status_box.info(f"⚡ Cortex: Auditando cumplimiento normativo (Motor {modelo_elegido.split('/')[-1]})...")
+            status_box.info(f"⚡ Cortex: Extrayendo 24 puntos críticos...")
             model = genai.GenerativeModel(modelo_elegido)
             response = model.generate_content([prompt, archivo_gemini])
             
             bar.progress(85)
             
-            # E. REPORTE
-            status_box.info("📝 Cortex: Generando reporte ejecutivo...")
-            datos = limpiar_y_reparar_json(response.text)
+            # E. PROCESAMIENTO Y FORZADO DE COLUMNAS
+            status_box.info("📝 Cortex: Estructurando Matriz Maestra...")
+            datos_raw = limpiar_y_reparar_json(response.text)
+            
+            # --- RED DE SEGURIDAD PARA 24 COLUMNAS ---
+            # Definimos el mapa exacto de claves vs Títulos de Columna
+            mapa_columnas = {
+                "c01": "1. ID",
+                "c02": "2. Fecha preguntas, fechas de cierre",
+                "c03": "3. Plazos de la licitación",
+                "c04": "4. Productos ofertados",
+                "c05": "5. Presupuesto institución",
+                "c06": "6. Boleta de garantía",
+                "c07": "7. Duración de la licitación",
+                "c08": "8. Vigencia mínima de la propuesta",
+                "c09": "9. Si tiene reajuste la licitación",
+                "c10": "10. Hay suscripción de contrato",
+                "c11": "11. Anexos de admisibilidad",
+                "c12": "12. Pauta evaluativa",
+                "c13": "13. Requisitos administrativos",
+                "c14": "14. Requisitos técnicos",
+                "c15": "15. Requisitos económicos",
+                "c16": "16. Plazo de entrega (inc. emergencia)",
+                "c17": "17. Monto mínimo",
+                "c18": "18. Si es faltante Cenabast",
+                "c19": "19. Detección de glosa a ofertar",
+                "c20": "20. Vencimiento mínimo a ofertar",
+                "c21": "21. Canje y sus condiciones",
+                "c22": "22. Causales de inadmisibilidad",
+                "c23": "23. Solicita formato de experiencia",
+                "c24": "24. Multas asociadas"
+            }
+            
+            # Creamos un diccionario final ordenado. Si falta un dato, ponemos "No detectado"
+            datos_finales = {}
+            for clave_json, titulo_excel in mapa_columnas.items():
+                datos_finales[titulo_excel] = datos_raw.get(clave_json, "No detectado")
             
             bar.progress(100)
-            status_box.success("✅ ¡Auditoría Finalizada con Éxito!")
+            status_box.success("✅ Matriz 24x Generada.")
             
-            # 🎉 CAMBIO DE ESTADO 2: MODO ÉXITO 🎉
-            # Cambiamos al robot por el emoji "Cool" y aplica el salto de victoria
+            # ANIMACIÓN VICTORIA
             robot_spot.markdown('<div class="robot-container robot-success">😎</div>', unsafe_allow_html=True)
             
-            # DASHBOARD
+            # DASHBOARD PRELIMINAR (Solo puntos clave)
             with st.container():
                 c1, c2 = st.columns(2)
                 with c1:
-                    st.error(f"🚫 **Riesgos de Rechazo:**\n\n{datos.get('inadmisibilidad', '-')}")
+                    st.error(f"🚫 **Inadmisibilidad (22):**\n\n{datos_finales['22. Causales de inadmisibilidad']}")
                 with c2:
-                    st.warning(f"⚠️ **Garantías y Glosas:**\n\n{datos.get('garantia_seriedad', '-')}")
+                    st.warning(f"⚠️ **Glosa Garantía (19):**\n\n{datos_finales['19. Detección de glosa a ofertar']}")
             
-            # F. EXCEL
-            df = pd.DataFrame([datos])
-            cols_deseadas = ['id_licitacion', 'inadmisibilidad', 'fechas', 'garantia_seriedad', 'garantia_cumplimiento', 'multas', 'cenabast', 'productos']
-            cols_finales = [c for c in cols_deseadas if c in df.columns] + [c for c in df.columns if c not in cols_deseadas]
-            df = df[cols_finales]
+            # F. GENERAR EXCEL
+            df = pd.DataFrame([datos_finales])
+            
+            # Aseguramos que el orden de columnas sea el correcto (1 a 24)
+            columnas_ordenadas = list(mapa_columnas.values())
+            df = df[columnas_ordenadas]
 
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                df.to_excel(writer, sheet_name='Auditoria_Cortex', index=False)
+                df.to_excel(writer, sheet_name='Matriz_Cortex', index=False)
                 workbook = writer.book
-                worksheet = writer.sheets['Auditoria_Cortex']
+                worksheet = writer.sheets['Matriz_Cortex']
                 
-                fmt_header = workbook.add_format({'bold': True, 'bg_color': '#2E5CB8', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter'})
-                fmt_risk = workbook.add_format({'bg_color': '#FFC7CE', 'text_wrap': True, 'border': 1, 'valign': 'top'})
-                fmt_alert = workbook.add_format({'bg_color': '#FFEB9C', 'text_wrap': True, 'border': 1, 'valign': 'top'})
-                fmt_normal = workbook.add_format({'text_wrap': True, 'border': 1, 'valign': 'top'})
+                # Estilos
+                fmt_header = workbook.add_format({'bold': True, 'bg_color': '#1e3c72', 'font_color': 'white', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True})
+                fmt_body = workbook.add_format({'text_wrap': True, 'border': 1, 'valign': 'top'})
                 
-                worksheet.set_row(0, 30)
+                worksheet.set_row(0, 50) # Cabecera alta
+                
                 for col_num, value in enumerate(df.columns.values):
-                    worksheet.write(0, col_num, str(value).upper(), fmt_header)
-                    col = str(value).lower()
-                    if 'inadmisibilidad' in col or 'multas' in col: worksheet.set_column(col_num, col_num, 40, fmt_risk)
-                    elif 'garantia' in col: worksheet.set_column(col_num, col_num, 35, fmt_alert)
-                    else: worksheet.set_column(col_num, col_num, 25, fmt_normal)
+                    worksheet.write(0, col_num, str(value), fmt_header)
+                    # Ajuste de ancho según contenido estimado
+                    width = 40 if "inadmisibilidad" in str(value).lower() or "multas" in str(value).lower() else 25
+                    worksheet.set_column(col_num, col_num, width, fmt_body)
 
             st.divider()
-            filename = f"Reporte_Cortex_{datos.get('id_licitacion', 'Licitacion')}.xlsx"
-            
+            filename = f"Reporte_Cortex_24P_{datos_finales.get('1. ID', 'General')}.xlsx"
             st.download_button(
-                label="📥 DESCARGAR REPORTE CORTEX",
+                label="📥 DESCARGAR REPORTE (24 COLUMNAS)",
                 data=buffer,
                 file_name=filename,
                 mime="application/vnd.ms-excel"
             )
             os.remove(tmp_path)
             
-            # 🔄 RESET AUTOMÁTICO
-            # Esperamos 4 segundos para disfrutar el éxito y volvemos al estado Zen
             time.sleep(4)
             robot_spot.markdown('<div class="robot-container robot-zen">🤖</div>', unsafe_allow_html=True)
 
         except Exception as e:
-            st.error(f"❌ Error del Sistema: {e}")
-            # Si algo falla, el robot se marea
+            st.error(f"❌ Error: {e}")
             robot_spot.markdown('<div class="robot-container robot-zen">😵</div>', unsafe_allow_html=True)
