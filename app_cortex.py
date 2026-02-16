@@ -11,12 +11,12 @@ import time
 
 # --- 1. CONFIGURACIÓN VISUAL ---
 st.set_page_config(
-    page_title="Cortex AI - Matriz Gador",
+    page_title="Cortex AI - Auditoría Dedicada",
     page_icon="🤖",
     layout="centered"
 )
 
-# --- CSS QUANTUM (Animaciones) ---
+# --- CSS QUANTUM (Animaciones Premium) ---
 st.markdown("""
     <style>
     .stButton>button {
@@ -82,11 +82,12 @@ with st.sidebar:
     st.markdown("**Enterprise Edition**")
     st.markdown("---")
     st.success("🟢 **Matriz:** 24 Puntos")
-    st.info("🧬 **Versión:** Precision V27.0")
+    st.info("🧬 **Versión:** Dedicated V28.0")
 
-# --- 3. ENCABEZADO ---
+# --- 3. ENCABEZADO (AQUÍ ESTÁ EL CAMBIO) ---
 st.title("🧠 Cortex: Auditoría Matriz 24")
-st.markdown("Soy **Cortex**. Analizo las bases y genero el reporte con las **24 columnas críticas** solicitadas.")
+# Texto ajustado según tu solicitud:
+st.markdown("Soy **Cortex**, agente para analizar bases de manera dedicada.")
 
 # --- 4. INPUT ---
 uploaded_file = st.file_uploader("📂 Cargar Bases (PDF):", type=["pdf"])
@@ -189,7 +190,6 @@ if uploaded_file is not None:
             datos_raw = limpiar_y_reparar_json(response.text)
             
             # --- RED DE SEGURIDAD PARA 24 COLUMNAS ---
-            # Definimos el mapa exacto de claves vs Títulos de Columna
             mapa_columnas = {
                 "c01": "1. ID",
                 "c02": "2. Fecha preguntas, fechas de cierre",
