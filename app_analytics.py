@@ -1,6 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 import pandas as pd
+import altair as alt # Librería de gráficos pro
 import io
 
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
@@ -10,38 +11,53 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CSS PRO ---
+# --- CSS PRO (ESTILO CORTEX ENTERPRISE) ---
 st.markdown("""
     <style>
-    .stButton>button {
-        background-color: #2E5CB8;
-        color: white;
-        border-radius: 8px;
-        padding: 0.6rem 1.2rem;
-        border: none;
-        font-weight: 600;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        transition: all 0.3s ease;
+    /* Fondo y Títulos */
+    .stApp {
+        background-color: #0E1117;
+        color: #FAFAFA;
     }
-    .stButton>button:hover {
-        background-color: #1F4085;
-        transform: translateY(-2px);
+    h1, h2, h3 {
+        font-family: 'Helvetica Neue', sans-serif;
+        font-weight: 700;
     }
+    h1 { color: #4A90E2; } /* Azul Cortex */
+    
+    /* Métricas (KPI Cards) */
     div[data-testid="stMetricValue"] {
-        font-size: 26px;
-        color: #2E5CB8;
+        font-size: 32px;
+        color: #00D4FF; /* Cyan Neón para números */
         font-weight: bold;
     }
-    .chat-box {
-        background-color: #f8f9fa;
-        padding: 25px;
-        border-radius: 12px;
-        border-left: 6px solid #2E5CB8;
-        margin-top: 20px;
-        color: #333;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    div[data-testid="stMetricLabel"] {
         font-size: 16px;
-        line-height: 1.6;
+        color: #B0B0B0;
+    }
+    
+    /* Botón Principal */
+    .stButton>button {
+        background: linear-gradient(90deg, #2E5CB8 0%, #4A00E0 100%);
+        color: white;
+        border-radius: 8px;
+        border: none;
+        padding: 0.6rem 1.5rem;
+        font-weight: 600;
+        transition: transform 0.2s;
+    }
+    .stButton>button:hover {
+        transform: scale(1.05);
+    }
+    
+    /* Chat Box */
+    .chat-box {
+        background-color: #1E2329;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 5px solid #00D4FF;
+        margin-top: 15px;
+        color: #E0E0E0;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -50,181 +66,180 @@ st.markdown("""
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/4712/4712035.png", width=80)
     st.title("Cortex Analytics")
-    st.markdown("**Módulo de Compras Ágiles**")
+    st.markdown("**Inteligencia de Mercado**")
     st.markdown("---")
-    st.info("Sube tu reporte 'Detalle OC' o histórico de Mercado Público.")
+    st.info("Sube tu histórico de Mercado Público para generar el tablero de mando.")
     
-    # API KEY
     if "GOOGLE_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
     else:
-        st.error("⚠️ Falta API Key en Secrets.")
+        st.error("⚠️ Falta API Key.")
         st.stop()
 
 # --- FUNCIONES AUXILIARES ---
-def detectar_columna_con_datos(df, posibles_nombres):
-    """Busca la primera columna que exista Y que tenga datos reales (no solo vacíos)."""
+def detectar_columna(df, posibles):
+    """Detecta columnas clave ignorando mayúsculas/minúsculas"""
     for col in df.columns:
-        if col in posibles_nombres:
-            # Verifica si tiene al menos un dato no nulo
-            if df[col].notna().sum() > 0:
+        for p in posibles:
+            if p.lower() in col.lower() and df[col].notna().sum() > 0:
                 return col
     return None
 
-# --- TÍTULO ---
-st.title("📊 Sentinela: Inteligencia de Negocios")
-st.markdown("Bienvenido al módulo estratégico. Carga tus datos para identificar **Oportunidades de Venta y Patrones de Compra**.")
+def limpiar_monto(serie):
+    """Limpia signos de $ y puntos para convertir a número"""
+    if serie.dtype == object:
+        return serie.astype(str).str.replace(r'[$.]', '', regex=True).astype(float)
+    return serie
 
-# --- CARGA DATOS ---
-uploaded_file = st.file_uploader("📂 Subir Planilla (Excel/CSV)", type=["xlsx", "csv"])
+# --- TÍTULO ---
+st.title("📊 Tablero de Comando Comercial")
+st.markdown("Visualización estratégica de oportunidades en Mercado Público.")
+
+# --- CARGA DE DATOS ---
+uploaded_file = st.file_uploader("📂 Cargar Datos (Excel/CSV)", type=["xlsx", "csv"])
 
 if uploaded_file:
     try:
+        # 1. Cargar Data
         if uploaded_file.name.endswith('.csv'):
-            try:
-                df = pd.read_csv(uploaded_file, encoding='utf-8')
-            except:
-                df = pd.read_csv(uploaded_file, encoding='latin-1')
+            try: df = pd.read_csv(uploaded_file, encoding='utf-8')
+            except: df = pd.read_csv(uploaded_file, encoding='latin-1')
         else:
             df = pd.read_excel(uploaded_file)
         
-        # --- DASHBOARD DE KPI (CON PROTECCIÓN DE ERRORES) ---
-        st.divider()
-        st.subheader("📈 Estado General")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        col1.metric("Registros", f"{len(df):,}")
-        
-        # Detección inteligente de columnas CON VALIDACIÓN DE DATOS
-        col_monto = detectar_columna_con_datos(df, ['TotalNeto', 'TotalLinea', 'Monto', 'Total'])
-        # Aquí priorizamos NombreUnidad porque NombreOrganismo suele venir vacío en CSVs de OC
-        col_organismo = detectar_columna_con_datos(df, ['NombreUnidad', 'NombreOrganismo', 'Organismo', 'Comprador']) 
-        col_region = detectar_columna_con_datos(df, ['RegionUnidad', 'Region', 'RegionComprador'])
-        col_producto = detectar_columna_con_datos(df, ['Producto', 'NombreProducto', 'Descripcion'])
+        # 2. Detección Inteligente de Columnas
+        col_monto = detectar_columna(df, ['TotalNeto', 'TotalLinea', 'Monto', 'Total'])
+        col_org = detectar_columna(df, ['NombreUnidad', 'NombreOrganismo', 'Organismo']) 
+        col_reg = detectar_columna(df, ['RegionUnidad', 'Region'])
+        col_prod = detectar_columna(df, ['Producto', 'NombreProducto', 'Descripcion'])
+        col_cant = detectar_columna(df, ['Cantidad', 'Cant'])
 
-        # 1. KPI MONTO
+        # 3. Procesamiento de Datos (Limpieza)
         if col_monto:
-             try:
-                # Limpieza si viene con signos $
-                if df[col_monto].dtype == object:
-                    total_venta = df[col_monto].astype(str).str.replace(r'[$.]', '', regex=True).astype(float).sum()
-                else:
-                    total_venta = df[col_monto].sum()
-                col2.metric("Monto Total Analizado", f"${total_venta:,.0f}")
-             except:
-                col2.metric("Monto Total", "Error calc.")
+            df['Monto_Clean'] = limpiar_monto(df[col_monto])
         else:
-             col2.metric("Monto Total", "No detectado")
-             
-        # 2. KPI COMPRADOR (AQUÍ FALLABA ANTES)
-        if col_organismo:
-            try:
-                conteo = df[col_organismo].value_counts()
-                if not conteo.empty:
-                    top_org = conteo.idxmax()
-                    col3.metric("Mayor Comprador", f"{str(top_org)[:20]}...")
-                else:
-                    col3.metric("Mayor Comprador", "Sin datos válidos")
-            except:
-                col3.metric("Mayor Comprador", "-")
-        else:
-             col3.metric("Mayor Comprador", "-")
+            df['Monto_Clean'] = 0
 
-        # 3. KPI REGIÓN
-        if col_region:
-            try:
-                conteo_reg = df[col_region].value_counts()
-                if not conteo_reg.empty:
-                    top_reg = conteo_reg.idxmax()
-                    col4.metric("Región Dominante", f"{str(top_reg)}")
-                else:
-                    col4.metric("Región", "-")
-            except:
-                col4.metric("Región", "-")
-        else:
-             col4.metric("Región", "-")
-
-        with st.expander("🔍 Ver Tabla de Datos"):
-            st.dataframe(df.head(50), use_container_width=True)
-
-        # --- MOTOR DE INTELIGENCIA (CHAT) ---
+        # --- DASHBOARD VISUAL DE IMPACTO ---
         st.divider()
-        st.subheader("🤖 Consultor Estratégico (Cortex)")
         
-        col_chat, col_img = st.columns([3, 1])
+        # FILA 1: KPIs CLAVE (Números Grandes)
+        kpi1, kpi2, kpi3, kpi4 = st.columns(4)
         
-        with col_chat:
-            pregunta = st.text_input("Consulta estratégica:", placeholder="Ej: ¿Cuáles son los 5 productos más vendidos? / ¿Qué región compra más?")
-            
-            if st.button("⚡ ANALIZAR ESTRATEGIA") and pregunta:
-                with st.spinner("Cortex está calculando estadísticas globales y analizando..."):
-                    try:
-                        # --- 1. INTELECTO MATEMÁTICO (Pre-Cálculo de Verdades) ---
-                        stats_txt = ""
-                        
-                        # Top Productos (Validando que existan columnas y datos)
-                        if col_producto and 'Cantidad' in df.columns and col_monto:
-                             # Intentamos usar PrecioNeto si existe, si no, inferimos del Monto Total
-                             col_precio = 'PrecioNeto' if 'PrecioNeto' in df.columns else col_monto
-                             
-                             try:
-                                top_prods = df.groupby(col_producto).agg({'Cantidad':'sum', col_precio:'mean'}).sort_values('Cantidad', ascending=False).head(5)
-                                stats_txt += f"\n[TOP 5 PRODUCTOS MÁS COMPRADOS]\n{top_prods.to_string()}\n"
-                             except:
-                                pass # Si falla el groupby, seguimos sin ese dato
+        # KPI 1: Total Transado
+        total_monto = df['Monto_Clean'].sum()
+        kpi1.metric("💰 Mercado Total", f"${total_monto:,.0f}")
+        
+        # KPI 2: Ticket Promedio
+        avg_ticket = df['Monto_Clean'].mean()
+        kpi2.metric("🎫 Ticket Promedio", f"${avg_ticket:,.0f}")
+        
+        # KPI 3: Total OC/Licitaciones
+        kpi3.metric("📄 Total Operaciones", f"{len(df):,}")
+        
+        # KPI 4: Top Comprador
+        if col_org:
+            top_buyer = df[col_org].value_counts().idxmax()
+            kpi4.metric("🏆 Comprador #1", f"{str(top_buyer)[:15]}..")
+        else:
+            kpi4.metric("🏆 Comprador #1", "N/A")
 
-                        # Top Región por Monto
-                        if col_region and col_monto:
-                            try:
-                                top_reg_monto = df.groupby(col_region)[col_monto].sum().sort_values(ascending=False).head(3)
-                                stats_txt += f"\n[TOP 3 REGIONES POR MONTO COMPRADO]\n{top_reg_monto.to_string()}\n"
-                            except: pass
+        st.markdown("---")
 
-                        # Top Organismo por Monto
-                        if col_organismo and col_monto:
-                            try:
-                                top_org_monto = df.groupby(col_organismo)[col_monto].sum().sort_values(ascending=False).head(3)
-                                stats_txt += f"\n[TOP 3 ORGANISMOS COMPRADORES]\n{top_org_monto.to_string()}\n"
-                            except: pass
-                        
-                        # --- 2. SELECTOR DE MODELO (Anti-Error 404) ---
-                        modelos_disponibles = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                        # Prioridad: Flash -> Pro -> Cualquiera
-                        modelo_nombre = next((m for m in modelos_disponibles if 'flash' in m), None)
-                        if not modelo_nombre:
-                            modelo_nombre = next((m for m in modelos_disponibles if 'pro' in m), modelos_disponibles[0])
-                        
-                        model = genai.GenerativeModel(modelo_nombre)
-                        
-                        # --- 3. PROMPT MAESTRO (11 AÑOS DE EXPERIENCIA) ---
-                        prompt = f"""
-                        ERES CORTEX ANALYTICS, UN EXPERTO GERENTE COMERCIAL DE MERCADO PÚBLICO CHILE.
-                        
-                        Tienes acceso a dos fuentes de información:
-                        1. ESTADÍSTICAS GLOBALES CALCULADAS (Datos duros):
-                        {stats_txt}
-                        
-                        2. MUESTRA DE DATOS DETALLADOS (Primeras 50 filas):
-                        {df.head(50).to_string()}
-                        
-                        PREGUNTA DEL USUARIO: "{pregunta}"
-                        
-                        INSTRUCCIONES:
-                        - Usa las ESTADÍSTICAS GLOBALES para responder sobre "Top", "Más vendido" o "Totales".
-                        - Si preguntan por precios, usa el promedio calculado.
-                        - Si preguntan por Región, cruza el dato de la Región con los productos.
-                        - Sé directo y estratégico.
-                        """
-                        
-                        response = model.generate_content(prompt)
-                        st.markdown(f'<div class="chat-box">{response.text}</div>', unsafe_allow_html=True)
-                        
-                    except Exception as e:
-                        st.error(f"Error detallado durante el análisis: {e}")
+        # FILA 2: GRÁFICOS ESTRATÉGICOS (Aquí está la magia visual)
+        chart_col1, chart_col2 = st.columns(2)
+
+        with chart_col1:
+            st.subheader("📦 Top 5 Productos (Por Monto)")
+            if col_prod and col_monto:
+                # Agrupamos datos para el gráfico
+                chart_data_prod = df.groupby(col_prod)['Monto_Clean'].sum().reset_index()
+                chart_data_prod = chart_data_prod.sort_values('Monto_Clean', ascending=False).head(5)
+                
+                # Gráfico de Barras Horizontal con Altair
+                bar_chart = alt.Chart(chart_data_prod).mark_bar(cornerRadius=5).encode(
+                    x=alt.X('Monto_Clean', title='Monto Total ($)'),
+                    y=alt.Y(col_prod, sort='-x', title='Producto'),
+                    color=alt.value('#4A90E2'), # Azul Cortex
+                    tooltip=[col_prod, alt.Tooltip('Monto_Clean', format=',.0f')]
+                ).properties(height=300)
+                
+                st.altair_chart(bar_chart, use_container_width=True)
+            else:
+                st.warning("Faltan datos de Producto o Monto para graficar.")
+
+        with chart_col2:
+            st.subheader("🌍 Mapa de Calor Regional")
+            if col_reg and col_monto:
+                # Agrupamos por región
+                chart_data_reg = df.groupby(col_reg)['Monto_Clean'].sum().reset_index()
+                chart_data_reg = chart_data_reg.sort_values('Monto_Clean', ascending=False).head(7)
+                
+                # Gráfico de Barras Vertical
+                reg_chart = alt.Chart(chart_data_reg).mark_bar(cornerRadius=5).encode(
+                    x=alt.X(col_reg, sort='-y', title='Región'),
+                    y=alt.Y('Monto_Clean', title='Inversión ($)'),
+                    color=alt.value('#00D4FF'), # Cyan Cortex
+                    tooltip=[col_reg, alt.Tooltip('Monto_Clean', format=',.0f')]
+                ).properties(height=300)
+                
+                st.altair_chart(reg_chart, use_container_width=True)
+            else:
+                st.warning("Faltan datos de Región para graficar.")
+
+        # --- SECCIÓN: CONSULTOR IA ---
+        st.divider()
+        st.subheader("🤖 Cortex Strategic Advisor")
+        st.info("¿Qué te llama la atención de los gráficos? Pregúntame detalles.")
         
-        with col_img:
-            st.markdown("###")
-            st.image("https://cdn-icons-png.flaticon.com/512/6009/6009864.png", width=150)
+        col_input, col_go = st.columns([4, 1])
+        with col_input:
+            pregunta = st.text_input("Pregunta al Agente:", placeholder="Ej: ¿Por qué la Región X compra tanto Producto Y?", label_visibility="collapsed")
+        with col_go:
+            btn_analizar = st.button("⚡ INVESTIGAR")
+
+        if btn_analizar and pregunta:
+            with st.spinner("Cruzando datos de gráficos con inteligencia histórica..."):
+                try:
+                    # PREPARAR CONTEXTO PARA IA
+                    # Le pasamos el TOP 5 ya calculado para que no alucine
+                    top_5_txt = ""
+                    if col_prod:
+                         top_5_txt = df.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string()
+                    
+                    # SELECTOR DE MODELO
+                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                    model_name = next((m for m in models if 'flash' in m), models[0])
+                    model = genai.GenerativeModel(model_name)
+
+                    prompt = f"""
+                    ERES UN ANALISTA DE INTELIGENCIA DE NEGOCIOS.
+                    Tienes en pantalla un Dashboard con estos datos clave:
+                    
+                    [KPI MACRO]
+                    Total Mercado: ${total_monto:,.0f}
+                    Ticket Promedio: ${avg_ticket:,.0f}
+                    
+                    [TOP 5 PRODUCTOS REALES]
+                    {top_5_txt}
+                    
+                    PREGUNTA DEL USUARIO: "{pregunta}"
+                    
+                    INSTRUCCIONES:
+                    1. Responde basándote en los datos duros.
+                    2. Sé breve, directo y estratégico.
+                    3. Si detectas una oportunidad (ej: un producto que se vende mucho pero a bajo precio), menciónala.
+                    """
+                    
+                    response = model.generate_content(prompt)
+                    st.markdown(f'<div class="chat-box">{response.text}</div>', unsafe_allow_html=True)
+
+                except Exception as e:
+                    st.error(f"Error en IA: {e}")
+
+        # DATA RAW (Escondida pero accesible)
+        with st.expander("🔍 Ver Datos Crudos (Tabla Completa)"):
+            st.dataframe(df)
 
     except Exception as e:
-        st.error(f"❌ Error al procesar archivo. Asegúrate de 'openpyxl' en requirements.txt. Detalle: {e}")
+        st.error(f"❌ Error procesando el archivo: {e}")
