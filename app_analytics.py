@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CSS PRO (AJUSTADO PARA CIFRAS COMPLETAS) ---
+# --- CSS PRO (CON ANIMACIÓN CORTEX) ---
 st.markdown("""
     <style>
     /* Fondo y Títulos */
@@ -25,9 +25,9 @@ st.markdown("""
     }
     h1 { color: #4A90E2; }
     
-    /* Métricas (KPI Cards) - AHORA MÁS COMPACTAS */
+    /* Métricas (KPI Cards) - COMPACTAS */
     div[data-testid="stMetricValue"] {
-        font-size: 24px !important; /* Reducido para que quepa el número entero */
+        font-size: 24px !important;
         color: #00D4FF;
         font-weight: bold;
         word-wrap: break-word;
@@ -37,11 +37,20 @@ st.markdown("""
         color: #B0B0B0;
     }
     
-    /* Gráficos */
-    .chart-container {
-        background-color: #1E2329;
-        padding: 10px;
-        border-radius: 8px;
+    /* ANIMACIÓN ROBOT (CORTEX VIVE) */
+    .robot-container {
+        display: flex;
+        justify-content: center;
+        animation: float-breathe 4s ease-in-out infinite;
+        padding-bottom: 20px;
+    }
+    .robot-img {
+        width: 100px;
+        filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.6)); /* Brillo Neón */
+    }
+    @keyframes float-breathe {
+        0%, 100% { transform: translateY(0); filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.6)); }
+        50% { transform: translateY(-10px); filter: drop-shadow(0 0 25px rgba(0, 212, 255, 0.9)); }
     }
 
     /* Botón Principal */
@@ -66,9 +75,15 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- SIDEBAR ---
+# --- SIDEBAR (CON ROBOT ANIMADO) ---
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/4712/4712035.png", width=80)
+    # Contenedor animado para el logo
+    st.markdown("""
+        <div class="robot-container">
+            <img src="https://cdn-icons-png.flaticon.com/512/4712/4712035.png" class="robot-img">
+        </div>
+    """, unsafe_allow_html=True)
+    
     st.title("Cortex Analytics")
     st.markdown("**Inteligencia de Mercado**")
     st.markdown("---")
@@ -82,9 +97,10 @@ with st.sidebar:
 
 # --- FUNCIONES AUXILIARES ---
 def detectar_columna(df, posibles):
-    """Detecta columnas clave ignorando mayúsculas/minúsculas"""
+    """Detecta columnas clave ignorando mayúsculas/minúsculas y verificando datos"""
     for col in df.columns:
         for p in posibles:
+            # Busca coincidencia de nombre Y que tenga datos no nulos
             if p.lower() in col.lower() and df[col].notna().sum() > 0:
                 return col
     return None
@@ -110,12 +126,15 @@ if uploaded_file:
         else:
             df = pd.read_excel(uploaded_file)
         
-        # 2. Detección Inteligente de Columnas
+        # 2. Detección Inteligente de Columnas (PRIORIDAD AJUSTADA)
         col_monto = detectar_columna(df, ['TotalNeto', 'TotalLinea', 'Monto', 'Total'])
-        col_org = detectar_columna(df, ['NombreUnidad', 'NombreOrganismo', 'Organismo', 'Comprador']) 
-        col_reg = detectar_columna(df, ['RegionUnidad', 'Region'])
+        
+        # AQUÍ ESTÁ EL CAMBIO MAESTRO: Priorizamos 'NombreOrganismo' explícitamente
+        col_org = detectar_columna(df, ['NombreOrganismo', 'Organismo', 'NombreUnidad', 'Unidad', 'Comprador']) 
+        
+        col_reg = detectar_columna(df, ['RegionUnidad', 'Region', 'RegionComprador'])
         col_prod = detectar_columna(df, ['Producto', 'NombreProducto', 'Descripcion'])
-        col_prov = detectar_columna(df, ['NombreProvider', 'Proveedor', 'Vendedor', 'Empresa']) # Nueva columna clave
+        col_prov = detectar_columna(df, ['NombreProvider', 'Proveedor', 'Vendedor', 'Empresa']) 
         col_cant = detectar_columna(df, ['Cantidad', 'Cant'])
 
         # 3. Procesamiento de Datos (Limpieza)
@@ -124,7 +143,7 @@ if uploaded_file:
         else:
             df['Monto_Clean'] = 0
 
-        # --- DASHBOARD VISUAL (V6) ---
+        # --- DASHBOARD VISUAL (V7) ---
         st.divider()
         
         # === FILA 1: KPIs (LA WINCHA) ===
@@ -141,7 +160,7 @@ if uploaded_file:
         # KPI 3: Operaciones
         kpi3.metric("📄 Total Ops", f"{len(df):,}")
         
-        # KPI 4: Líder del Mercado (Proveedor más grande si existe, o Comprador)
+        # KPI 4: Líder del Mercado
         if col_prov and col_monto:
             top_player = df.groupby(col_prov)['Monto_Clean'].sum().idxmax()
             kpi4.metric("🏆 Top Proveedor", f"{str(top_player)[:15]}..")
@@ -153,27 +172,28 @@ if uploaded_file:
 
         st.markdown("---")
 
-        # === FILA 2: GRÁFICOS DE PODER (ORGANISMOS VS PROVEEDORES) ===
+        # === FILA 2: GRÁFICOS DE PODER ===
         st.subheader("🏛️ ¿Quién Compra? vs 🏢 ¿Quién Vende?")
         row1_col1, row1_col2 = st.columns(2)
 
-        # GRÁFICO 1: TOP ORGANISMOS (COMPRADORES)
+        # GRÁFICO 1: TOP ORGANISMOS
         with row1_col1:
             if col_org and col_monto:
+                # Agrupamos y ordenamos
                 chart_data_org = df.groupby(col_org)['Monto_Clean'].sum().reset_index()
                 chart_data_org = chart_data_org.sort_values('Monto_Clean', ascending=False).head(5)
                 
                 chart_org = alt.Chart(chart_data_org).mark_bar(cornerRadius=5).encode(
                     x=alt.X('Monto_Clean', title='Monto ($)'),
                     y=alt.Y(col_org, sort='-x', title='Organismo Público'),
-                    color=alt.value('#FF6B6B'), # Rojo Suave (Compras)
+                    color=alt.value('#FF6B6B'), # Rojo Suave
                     tooltip=[col_org, alt.Tooltip('Monto_Clean', format=',.0f')]
                 ).properties(title="Top 5 Organismos Compradores", height=300)
                 st.altair_chart(chart_org, use_container_width=True)
             else:
                 st.info("Faltan datos de Organismo para este gráfico.")
 
-        # GRÁFICO 2: TOP PROVEEDORES (COMPETENCIA)
+        # GRÁFICO 2: TOP PROVEEDORES
         with row1_col2:
             if col_prov and col_monto:
                 chart_data_prov = df.groupby(col_prov)['Monto_Clean'].sum().reset_index()
@@ -182,18 +202,18 @@ if uploaded_file:
                 chart_prov = alt.Chart(chart_data_prov).mark_bar(cornerRadius=5).encode(
                     x=alt.X('Monto_Clean', title='Monto ($)'),
                     y=alt.Y(col_prov, sort='-x', title='Proveedor / Competidor'),
-                    color=alt.value('#4ECDC4'), # Verde Agua (Ventas)
+                    color=alt.value('#4ECDC4'), # Verde Agua
                     tooltip=[col_prov, alt.Tooltip('Monto_Clean', format=',.0f')]
                 ).properties(title="Top 5 Proveedores (Competencia)", height=300)
                 st.altair_chart(chart_prov, use_container_width=True)
             else:
-                st.info("No detecté la columna 'NombreProveedor' o similar.")
+                st.info("No se detectó columna de Proveedor.")
 
-        # === FILA 3: DETALLES (PRODUCTOS Y REGIONES) ===
+        # === FILA 3: DETALLES ===
         st.markdown("### 📦 ¿Qué se vende? y ¿Dónde?")
         row2_col1, row2_col2 = st.columns(2)
 
-        # GRÁFICO 3: TOP PRODUCTOS
+        # GRÁFICO 3: PRODUCTOS
         with row2_col1:
             if col_prod and col_monto:
                 chart_data_prod = df.groupby(col_prod)['Monto_Clean'].sum().reset_index()
@@ -214,7 +234,7 @@ if uploaded_file:
                 chart_data_reg = chart_data_reg.sort_values('Monto_Clean', ascending=False).head(5)
                 
                 chart_reg = alt.Chart(chart_data_reg).mark_bar(cornerRadius=5).encode(
-                    x=alt.X(col_reg, sort='-y', title='Región'), # Barras Verticales mejor aquí
+                    x=alt.X(col_reg, sort='-y', title='Región'), 
                     y=alt.Y('Monto_Clean', title='Monto ($)'),
                     color=alt.value('#A3A1FB'), # Lila
                     tooltip=[col_reg, alt.Tooltip('Monto_Clean', format=',.0f')]
@@ -239,7 +259,7 @@ if uploaded_file:
                     if col_prov:
                          top_prov_txt = df.groupby(col_prov)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string()
                     
-                    # SELECTOR DE MODELO
+                    # SELECTOR DE MODELO (FIX 404)
                     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                     model_name = next((m for m in models if 'flash' in m), models[0])
                     model = genai.GenerativeModel(model_name)
@@ -264,6 +284,11 @@ if uploaded_file:
                     response = model.generate_content(prompt)
                     st.markdown(f'<div class="chat-box">{response.text}</div>', unsafe_allow_html=True)
 
+                except Exception as e:
+                    st.error(f"Error IA: {e}")
+
+    except Exception as e:
+        st.error(f"❌ Error procesando el archivo: {e}")
                 except Exception as e:
                     st.error(f"Error IA: {e}")
 
