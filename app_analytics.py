@@ -46,7 +46,7 @@ st.markdown("""
     }
     .robot-img {
         width: 100px;
-        filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.6)); /* Brillo Neón */
+        filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.6));
     }
     @keyframes float-breathe {
         0%, 100% { transform: translateY(0); filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.6)); }
@@ -77,7 +77,6 @@ st.markdown("""
 
 # --- SIDEBAR (CON ROBOT ANIMADO) ---
 with st.sidebar:
-    # Contenedor animado para el logo
     st.markdown("""
         <div class="robot-container">
             <img src="https://cdn-icons-png.flaticon.com/512/4712/4712035.png" class="robot-img">
@@ -100,7 +99,6 @@ def detectar_columna(df, posibles):
     """Detecta columnas clave ignorando mayúsculas/minúsculas y verificando datos"""
     for col in df.columns:
         for p in posibles:
-            # Busca coincidencia de nombre Y que tenga datos no nulos
             if p.lower() in col.lower() and df[col].notna().sum() > 0:
                 return col
     return None
@@ -126,12 +124,10 @@ if uploaded_file:
         else:
             df = pd.read_excel(uploaded_file)
         
-        # 2. Detección Inteligente de Columnas (PRIORIDAD AJUSTADA)
+        # 2. Detección Inteligente de Columnas
         col_monto = detectar_columna(df, ['TotalNeto', 'TotalLinea', 'Monto', 'Total'])
-        
-        # AQUÍ ESTÁ EL CAMBIO MAESTRO: Priorizamos 'NombreOrganismo' explícitamente
+        # PRIORIDAD: NombreOrganismo
         col_org = detectar_columna(df, ['NombreOrganismo', 'Organismo', 'NombreUnidad', 'Unidad', 'Comprador']) 
-        
         col_reg = detectar_columna(df, ['RegionUnidad', 'Region', 'RegionComprador'])
         col_prod = detectar_columna(df, ['Producto', 'NombreProducto', 'Descripcion'])
         col_prov = detectar_columna(df, ['NombreProvider', 'Proveedor', 'Vendedor', 'Empresa']) 
@@ -143,24 +139,20 @@ if uploaded_file:
         else:
             df['Monto_Clean'] = 0
 
-        # --- DASHBOARD VISUAL (V7) ---
+        # --- DASHBOARD VISUAL ---
         st.divider()
         
-        # === FILA 1: KPIs (LA WINCHA) ===
+        # === FILA 1: KPIs ===
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
         
-        # KPI 1: Total Transado
         total_monto = df['Monto_Clean'].sum()
         kpi1.metric("💰 Mercado Total", f"${total_monto:,.0f}")
         
-        # KPI 2: Ticket Promedio
         avg_ticket = df['Monto_Clean'].mean()
         kpi2.metric("🎫 Ticket Promedio", f"${avg_ticket:,.0f}")
         
-        # KPI 3: Operaciones
         kpi3.metric("📄 Total Ops", f"{len(df):,}")
         
-        # KPI 4: Líder del Mercado
         if col_prov and col_monto:
             top_player = df.groupby(col_prov)['Monto_Clean'].sum().idxmax()
             kpi4.metric("🏆 Top Proveedor", f"{str(top_player)[:15]}..")
@@ -172,28 +164,23 @@ if uploaded_file:
 
         st.markdown("---")
 
-        # === FILA 2: GRÁFICOS DE PODER ===
+        # === FILA 2: GRÁFICOS ===
         st.subheader("🏛️ ¿Quién Compra? vs 🏢 ¿Quién Vende?")
         row1_col1, row1_col2 = st.columns(2)
 
-        # GRÁFICO 1: TOP ORGANISMOS
         with row1_col1:
             if col_org and col_monto:
-                # Agrupamos y ordenamos
                 chart_data_org = df.groupby(col_org)['Monto_Clean'].sum().reset_index()
                 chart_data_org = chart_data_org.sort_values('Monto_Clean', ascending=False).head(5)
                 
                 chart_org = alt.Chart(chart_data_org).mark_bar(cornerRadius=5).encode(
                     x=alt.X('Monto_Clean', title='Monto ($)'),
-                    y=alt.Y(col_org, sort='-x', title='Organismo Público'),
-                    color=alt.value('#FF6B6B'), # Rojo Suave
+                    y=alt.Y(col_org, sort='-x', title='Organismo'),
+                    color=alt.value('#FF6B6B'),
                     tooltip=[col_org, alt.Tooltip('Monto_Clean', format=',.0f')]
-                ).properties(title="Top 5 Organismos Compradores", height=300)
+                ).properties(title="Top 5 Compradores", height=300)
                 st.altair_chart(chart_org, use_container_width=True)
-            else:
-                st.info("Faltan datos de Organismo para este gráfico.")
 
-        # GRÁFICO 2: TOP PROVEEDORES
         with row1_col2:
             if col_prov and col_monto:
                 chart_data_prov = df.groupby(col_prov)['Monto_Clean'].sum().reset_index()
@@ -201,19 +188,16 @@ if uploaded_file:
                 
                 chart_prov = alt.Chart(chart_data_prov).mark_bar(cornerRadius=5).encode(
                     x=alt.X('Monto_Clean', title='Monto ($)'),
-                    y=alt.Y(col_prov, sort='-x', title='Proveedor / Competidor'),
-                    color=alt.value('#4ECDC4'), # Verde Agua
+                    y=alt.Y(col_prov, sort='-x', title='Proveedor'),
+                    color=alt.value('#4ECDC4'),
                     tooltip=[col_prov, alt.Tooltip('Monto_Clean', format=',.0f')]
-                ).properties(title="Top 5 Proveedores (Competencia)", height=300)
+                ).properties(title="Top 5 Proveedores", height=300)
                 st.altair_chart(chart_prov, use_container_width=True)
-            else:
-                st.info("No se detectó columna de Proveedor.")
 
         # === FILA 3: DETALLES ===
         st.markdown("### 📦 ¿Qué se vende? y ¿Dónde?")
         row2_col1, row2_col2 = st.columns(2)
 
-        # GRÁFICO 3: PRODUCTOS
         with row2_col1:
             if col_prod and col_monto:
                 chart_data_prod = df.groupby(col_prod)['Monto_Clean'].sum().reset_index()
@@ -222,12 +206,11 @@ if uploaded_file:
                 chart_prod = alt.Chart(chart_data_prod).mark_bar(cornerRadius=5).encode(
                     x=alt.X('Monto_Clean', title='Monto ($)'),
                     y=alt.Y(col_prod, sort='-x', title='Producto'),
-                    color=alt.value('#4A90E2'), # Azul Cortex
+                    color=alt.value('#4A90E2'),
                     tooltip=[col_prod, alt.Tooltip('Monto_Clean', format=',.0f')]
                 ).properties(height=250)
                 st.altair_chart(chart_prod, use_container_width=True)
 
-        # GRÁFICO 4: REGIONES
         with row2_col2:
             if col_reg and col_monto:
                 chart_data_reg = df.groupby(col_reg)['Monto_Clean'].sum().reset_index()
@@ -236,49 +219,84 @@ if uploaded_file:
                 chart_reg = alt.Chart(chart_data_reg).mark_bar(cornerRadius=5).encode(
                     x=alt.X(col_reg, sort='-y', title='Región'), 
                     y=alt.Y('Monto_Clean', title='Monto ($)'),
-                    color=alt.value('#A3A1FB'), # Lila
+                    color=alt.value('#A3A1FB'),
                     tooltip=[col_reg, alt.Tooltip('Monto_Clean', format=',.0f')]
                 ).properties(height=250)
                 st.altair_chart(chart_reg, use_container_width=True)
 
-        # --- CONSULTOR IA ---
+        # --- CONSULTOR IA (CEREBRO OMNISCIENTE) ---
         st.divider()
         st.subheader("🤖 Cortex Strategic Advisor")
         
         col_input, col_go = st.columns([4, 1])
         with col_input:
-            pregunta = st.text_input("Pregunta al Agente:", placeholder="Ej: ¿Qué estrategia tiene el proveedor líder? / ¿Por qué compra tanto el Organismo X?", label_visibility="collapsed")
+            pregunta = st.text_input("Pregunta al Agente:", placeholder="Ej: ¿Qué compran más en Valparaíso? / Estrategia contra el proveedor líder", label_visibility="collapsed")
         with col_go:
             btn_analizar = st.button("⚡ INVESTIGAR")
 
         if btn_analizar and pregunta:
-            with st.spinner("Analizando competencia y patrones..."):
+            with st.spinner("Cortex está cruzando variables (Región vs Producto vs Precio)..."):
                 try:
-                    # PREPARAR DATOS DUROS PARA LA IA
-                    top_prov_txt = ""
-                    if col_prov:
-                         top_prov_txt = df.groupby(col_prov)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string()
+                    # --- PREPARACIÓN DE INTELIGENCIA (EL FIX QUE FALTABA) ---
+                    # 1. Top Productos
+                    txt_prod = ""
+                    if col_prod:
+                        txt_prod = df.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string()
                     
-                    # SELECTOR DE MODELO (FIX 404)
+                    # 2. Top Proveedores
+                    txt_prov = ""
+                    if col_prov:
+                        txt_prov = df.groupby(col_prov)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string()
+
+                    # 3. Top Regiones
+                    txt_reg = ""
+                    if col_reg:
+                        txt_reg = df.groupby(col_reg)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string()
+
+                    # 4. CRUCE INTELIGENTE (LA BALA DE PLATA)
+                    # Calculamos: El producto más vendido POR REGIÓN
+                    txt_cruce = ""
+                    if col_reg and col_prod:
+                        try:
+                            # Agrupamos por Region y Producto, sumamos monto
+                            aux = df.groupby([col_reg, col_prod])['Monto_Clean'].sum().reset_index()
+                            # Ordenamos para dejar el producto top de cada región primero
+                            aux = aux.sort_values([col_reg, 'Monto_Clean'], ascending=[True, False])
+                            # Nos quedamos con el Top 1 de cada región
+                            top_por_region = aux.groupby(col_reg).head(3) # Top 3 productos por región
+                            txt_cruce = top_por_region.to_string(index=False)
+                        except:
+                            txt_cruce = "No se pudo calcular el cruce."
+
+                    # --- SELECTOR DE MODELO ---
                     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                     model_name = next((m for m in models if 'flash' in m), models[0])
                     model = genai.GenerativeModel(model_name)
 
+                    # --- PROMPT MAESTRO ---
                     prompt = f"""
-                    ERES UN ESTRATEGA DE LICITACIONES PÚBLICAS (11 AÑOS DE EXPERIENCIA).
+                    ERES CORTEX, ANALISTA ESTRATÉGICO DE MERCADO PÚBLICO (11 AÑOS EXP).
                     
-                    [ESTADO DEL MERCADO]
-                    Total Mercado: ${total_monto:,.0f}
+                    He procesado los datos y aquí tienes los HECHOS DUROS:
                     
-                    [TOP COMPETENCIA (PROVEEDORES)]
-                    {top_prov_txt}
+                    [TOP 5 PRODUCTOS GLOBALES]
+                    {txt_prod}
+                    
+                    [TOP 5 PROVEEDORES (COMPETENCIA)]
+                    {txt_prov}
+                    
+                    [TOP REGIONES]
+                    {txt_reg}
+                    
+                    [CRUCE: LO QUE MÁS SE VENDE EN CADA REGIÓN] (¡IMPORTANTE!)
+                    {txt_cruce}
                     
                     PREGUNTA DEL USUARIO: "{pregunta}"
                     
                     INSTRUCCIONES:
-                    1. Si preguntan por competencia, analiza la lista de Top Proveedores.
-                    2. Si preguntan por estrategia, sugiere precios o alianzas.
-                    3. Sé breve y táctico.
+                    1. Si preguntan "Qué se compra en X Región", mira la sección [CRUCE].
+                    2. Cruza los datos. Si Valparaíso aparece en el cruce, di exactamente qué producto es.
+                    3. Responde con autoridad y datos exactos.
                     """
                     
                     response = model.generate_content(prompt)
