@@ -44,10 +44,18 @@ with st.sidebar:
 
 # --- FUNCIONES ROBUSTAS ---
 def detectar_columna(df, posibles, excluir=[]):
+    """
+    Busca columnas priorizando el orden de 'posibles' y evitando 'excluir'.
+    """
     for p in posibles:
         for col in df.columns:
-            if any(exc.lower() in col.lower() for exc in excluir): continue
-            if p.lower() in col.lower() and df[col].notna().sum() > 0: return col
+            # 1. Chequeo de Exclusión (Anti-Rut)
+            if any(exc.lower() in col.lower() for exc in excluir):
+                continue
+            
+            # 2. Chequeo de Coincidencia
+            if p.lower() in col.lower() and df[col].notna().sum() > 0:
+                return col
     return None
 
 def limpiar_monto(serie):
@@ -79,6 +87,33 @@ def normalizar_region(nombre):
     if 'magallanes' in n: return "Magallanes"
     return "Otras"
 
+# --- BÚSQUEDA INTELIGENTE DE ENTIDADES ---
+def buscar_entidades(df, columna, query):
+    """
+    Busca entidades en una columna usando coincidencia flexible (espacios, mayúsculas).
+    Retorna una lista de nombres encontrados.
+    """
+    if not columna: return []
+    
+    # 1. Limpieza de Query
+    stop_words = ["que", "quien", "como", "donde", "el", "la", "los", "las", "un", "una", "por", "para", "con", "del", "al", "esta", "comprando", "vende", "detalle", "dime", "sobre"]
+    keywords = [w for w in query.lower().split() if w not in stop_words and len(w) > 2]
+    
+    encontrados = []
+    
+    # 2. Búsqueda por Keyword
+    for k in keywords:
+        # Búsqueda normal (contiene la palabra)
+        mask_normal = df[columna].astype(str).str.lower().str.contains(k, regex=False)
+        
+        # Búsqueda comprimida (para 'skatemarket' vs 'skate market')
+        mask_compress = df[columna].astype(str).str.lower().str.replace(" ", "").str.contains(k, regex=False)
+        
+        match = df[mask_normal | mask_compress][columna].unique()
+        encontrados.extend(match)
+        
+    return list(set(encontrados)) # Eliminar duplicados
+
 # --- APP ---
 st.title("📊 Tablero de Comando Comercial")
 uploaded_file = st.file_uploader("📂 Cargar Datos (Excel/CSV)", type=["xlsx", "csv"])
@@ -97,7 +132,8 @@ if uploaded_file:
         col_org = detectar_columna(df, ['Nombre Organismo', 'NombreOrganismo', 'NombreUnidad', 'Unidad', 'Comprador'], excluir=['Rut'])
         col_reg = detectar_columna(df, ['RegionUnidad', 'Region', 'RegionComprador'])
         col_prod = detectar_columna(df, ['Nombre Producto', 'Producto', 'NombreProducto', 'Descripcion'])
-        col_prov = detectar_columna(df, ['Nombre Proveedor', 'NombreProvider', 'Proveedor', 'Vendedor', 'Empresa'], excluir=['Rut', 'Codigo'])
+        # AQUI AGREGAMOS MAS SINÓNIMOS PARA ASEGURARNOS
+        col_prov = detectar_columna(df, ['Nombre Proveedor', 'NombreProvider', 'Proveedor', 'Razon Social', 'Vendedor', 'Empresa'], excluir=['Rut', 'Codigo'])
         col_cant = detectar_columna(df, ['Cantidad Adjudicada', 'Cantidad', 'Cant'])
 
         # Lógica de Montos
@@ -138,7 +174,6 @@ if uploaded_file:
                     x=alt.X('Monto_Clean', title='Monto ($)'), y=alt.Y(col_org, sort='-x', title=''), color=alt.value('#FF6B6B'), tooltip=[col_org, 'Monto_Clean']
                 ).properties(height=300)
                 st.altair_chart(ch_org, use_container_width=True)
-            else: st.info("No se detectó Organismo.")
         
         with c2:
             st.subheader("🏢 Top Competencia")
@@ -164,7 +199,6 @@ if uploaded_file:
                 text = base.mark_text(align='left', dx=10, color="#FAFAFA").encode(text=alt.Text('Monto_Clean', format='$.2s'))
                 
                 st.altair_chart((rule + circle + text).properties(height=500), use_container_width=True)
-            else: st.info("No se detectó Región.")
 
         with c4:
             st.subheader("📦 Top Productos")
@@ -175,48 +209,46 @@ if uploaded_file:
                 ).properties(height=500)
                 st.altair_chart(ch_prod, use_container_width=True)
 
-        # --- IA OMNISCIENTE V2 (BÚSQUEDA ACTIVA) ---
+        # --- IA OMNISCIENTE V3 (DETECTIVE DE ENTIDADES) ---
         st.divider()
         st.subheader("🤖 Cortex Strategic Advisor")
         
         q = st.text_input("Consulta:", placeholder="Ej: ¿Qué productos vende Skatemarket? / ¿Qué compra el Hospital X?", label_visibility="collapsed")
         if st.button("⚡ INVESTIGAR") and q:
-            with st.spinner("Analizando base de datos completa..."):
+            with st.spinner("Ejecutando búsqueda profunda..."):
                 try:
-                    # 1. BÚSQUEDA DE ENTIDAD ESPECÍFICA (La Nueva Magia)
-                    txt_especifico = "No se detectó una entidad específica en la pregunta."
-                    entidad_encontrada = None
+                    # 1. BÚSQUEDA DE ENTIDAD ESPECÍFICA
+                    txt_especifico = "No se detectó una entidad específica."
+                    entidades_match = []
                     
-                    # Buscamos coincidencias en Proveedores y Organismos
+                    # Buscamos en Proveedores y Organismos usando la función inteligente
                     if col_prov:
-                        for prov in df[col_prov].dropna().unique():
-                            if str(prov).lower() in q.lower():
-                                entidad_encontrada = prov
-                                filtro = df[df[col_prov] == prov]
-                                break
-                    if not entidad_encontrada and col_org:
-                        for org in df[col_org].dropna().unique():
-                            if str(org).lower() in q.lower():
-                                entidad_encontrada = org
-                                filtro = df[df[col_org] == org]
-                                break
+                        entidades_match.extend(buscar_entidades(df, col_prov, q))
+                    if col_org:
+                        entidades_match.extend(buscar_entidades(df, col_org, q))
                     
-                    # Si encontramos a alguien, sacamos su ficha técnica
-                    if entidad_encontrada:
+                    if entidades_match:
+                        # Filtramos el DF por las entidades encontradas
+                        filtro = df[df[col_prov].isin(entidades_match) | df[col_org].isin(entidades_match)] if col_prov and col_org else pd.DataFrame()
+                        
+                        # Si no funcionó el filtro combinado, probamos individual
+                        if filtro.empty and col_prov: filtro = df[df[col_prov].isin(entidades_match)]
+                        
                         total_entidad = filtro['Monto_Clean'].sum()
+                        
+                        # Detalle de productos de esa entidad
+                        prods_entidad = "Sin detalle."
                         if col_prod:
                             prods_entidad = filtro.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).to_string()
-                        else:
-                            prods_entidad = "No hay detalle de productos."
-                        
+
                         txt_especifico = f"""
-                        ✅ SE ENCONTRÓ LA ENTIDAD: '{entidad_encontrada}'
-                        - Total Transado: ${total_entidad:,.0f}
-                        - TOP PRODUCTOS DE ESTA ENTIDAD:
+                        ✅ SE ENCONTRARON LAS SIGUIENTES ENTIDADES: {entidades_match}
+                        - Total Transado (Grupo): ${total_entidad:,.0f}
+                        - TOP PRODUCTOS ESPECÍFICOS:
                         {prods_entidad}
                         """
-
-                    # 2. Contexto General (Lo de siempre)
+                    
+                    # 2. Contexto General
                     txt_prod = df.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).to_string() if col_prod else ""
                     
                     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
@@ -225,18 +257,18 @@ if uploaded_file:
                     prompt = f"""
                     ERES CORTEX, EXPERTO EN DATOS.
                     
-                    [BÚSQUEDA ESPECÍFICA POR USUARIO]
+                    [BÚSQUEDA ESPECÍFICA]
                     {txt_especifico}
                     
-                    [CONTEXTO GENERAL DEL MERCADO]
+                    [CONTEXTO GENERAL]
                     Top Productos Globales: {txt_prod}
                     
                     PREGUNTA: "{q}"
                     
                     INSTRUCCIONES:
-                    1. Si encontraste una entidad específica (sección ✅), responde con ESOS datos. Di "Analizando a [Nombre]...".
-                    2. Si no, responde con los datos generales.
-                    3. Detalla qué productos mueven, montos y sugerencias.
+                    1. Si hay datos en [BÚSQUEDA ESPECÍFICA], ÚSALOS. Es la prioridad.
+                    2. Responde: "He analizado a [Nombre] y encontré que vende..."
+                    3. Si no hay búsqueda específica, usa el contexto general.
                     """
                     res = model.generate_content(prompt)
                     st.markdown(f'<div class="chat-box">{res.text}</div>', unsafe_allow_html=True)
