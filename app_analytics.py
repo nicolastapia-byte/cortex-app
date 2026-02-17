@@ -8,12 +8,11 @@ import io
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Sentinela - Analítica Comercial", page_icon="📊", layout="wide")
 
-# --- CSS PRO ---
+# --- CSS PRO (T-9000 STYLE) ---
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FAFAFA; }
     h1 { color: #4A90E2; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
-    h2, h3 { font-family: 'Helvetica Neue', sans-serif; }
     div[data-testid="stMetricValue"] { font-size: 24px !important; color: #00D4FF; font-weight: bold; }
     
     /* ANIMACIÓN ROBOT */
@@ -21,7 +20,7 @@ st.markdown("""
     .robot-img { width: 100px; filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.6)); }
     @keyframes float-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
     
-    /* CHAT */
+    /* MENSAJES */
     .chat-box { background-color: #1E2329; padding: 20px; border-radius: 10px; border-left: 5px solid #00D4FF; margin-top: 15px; color: #E0E0E0; }
     .user-msg { text-align: right; color: #A0A0A0; font-style: italic; margin-bottom: 5px; }
     .bot-msg { text-align: left; color: #E0E0E0; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
@@ -118,7 +117,6 @@ uploaded_file = st.file_uploader("📂 Cargar Datos (Excel/CSV)", type=["xlsx", 
 
 if uploaded_file:
     try:
-        # CARGA
         if uploaded_file.name.endswith('.csv'):
             try: df = pd.read_csv(uploaded_file, encoding='utf-8')
             except: df = pd.read_csv(uploaded_file, encoding='latin-1')
@@ -135,19 +133,17 @@ if uploaded_file:
         col_id = detectar_columna(df, ['CodigoExterno', 'Codigo Licitación', 'Orden de Compra', 'Codigo', 'ID', 'OC'])
         col_fecha = detectar_columna(df, ['Fecha Adjudicación', 'FechaCreacion', 'Fecha'])
 
-        # LIMPIEZA DATOS
         if col_monto: df['Monto_Clean'] = limpiar_monto(df[col_monto])
         elif col_monto_uni and col_cant: df['Monto_Clean'] = limpiar_monto(df[col_monto_uni]) * pd.to_numeric(df[col_cant], errors='coerce').fillna(1)
         elif col_monto_uni: df['Monto_Clean'] = limpiar_monto(df[col_monto_uni])
         else: df['Monto_Clean'] = 0
             
-        # Limpieza Precio Unitario (Vital para el análisis de precios)
         if col_monto_uni: df['Precio_Clean'] = limpiar_monto(df[col_monto_uni])
         else: df['Precio_Clean'] = 0
             
         st.divider()
         
-        # --- SECCIÓN 1: KPIs ---
+        # KPI
         k1, k2, k3, k4 = st.columns(4)
         k1.metric("💰 Mercado Total", f"${df['Monto_Clean'].sum():,.0f}")
         k2.metric("🎫 Ticket Promedio", f"${df['Monto_Clean'].mean():,.0f}")
@@ -156,7 +152,7 @@ if uploaded_file:
         k4.metric("🏆 Líder", f"{str(top_lider)[:15]}..")
         st.markdown("---")
 
-        # --- SECCIÓN 2: GRÁFICOS ---
+        # GRÁFICOS
         c1, c2 = st.columns(2)
         with c1:
             st.subheader("🏛️ Top Compradores")
@@ -175,7 +171,6 @@ if uploaded_file:
 
         st.markdown("---")
         
-        # --- SECCIÓN 3: MAPA Y PRODUCTOS ---
         c3, c4 = st.columns([1, 1])
         with c3:
             st.subheader("📍 Distribución Geográfica (Norte a Sur)")
@@ -197,9 +192,9 @@ if uploaded_file:
                     x=alt.X('Monto_Clean', title='Monto ($)'), y=alt.Y(col_prod, sort='-x', title=''), color=alt.value('#4A90E2'), tooltip=[col_prod, 'Monto_Clean']
                 ).properties(height=500), use_container_width=True)
 
-        # --- SECCIÓN 4: CORTEX CHAT ---
+        # --- CORTEX CHAT (MODO POWER) ---
         st.divider()
-        st.subheader("🤖 Cortex Strategic Advisor")
+        st.subheader("🤖 Cortex Strategic Advisor (Power Edition)")
         
         for msg in st.session_state.history:
             role = "user-msg" if msg["role"] == "user" else "bot-msg"
@@ -211,7 +206,7 @@ if uploaded_file:
         if st.button("⚡ ANALIZAR") and q:
             st.session_state.history.append({"role": "user", "content": q})
             
-            with st.spinner("Calculando precios unitarios y buscando datos..."):
+            with st.spinner("Cortex High-Performance procesando..."):
                 try:
                     # 1. BÚSQUEDA
                     nuevo_nombre, nueva_col = buscar_entidad_avanzada(df, col_prov, col_org, q)
@@ -233,60 +228,41 @@ if uploaded_file:
                         df_f = df[df[col] == nombre].copy()
                         total = df_f['Monto_Clean'].sum()
                         
-                        # Productos y Montos Totales
                         prods = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).to_string() if col_prod else "N/A"
                         
-                        # --- SNIPER DE PRECIOS UNITARIOS (LA SOLUCIÓN) ---
-                        txt_precios_unitarios = "No disponible (Falta columna de precio unitario)."
+                        # PRECIOS UNITARIOS
+                        txt_precios_unitarios = "No disponible."
                         if col_monto_uni:
-                            # Agrupamos por producto y calculamos MIN, MAX y PROMEDIO del PRECIO UNITARIO
-                            stats = df_f.groupby(col_prod)['Precio_Clean'].agg(['min', 'max', 'mean', 'count'])
-                            # Filtramos los Top 10 por relevancia
+                            stats = df_f.groupby(col_prod)['Precio_Clean'].agg(['min', 'max', 'mean'])
                             top_prods_names = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).index
                             txt_precios_unitarios = stats.loc[top_prods_names].to_string()
 
                         # Detalle OCs
                         txt_ocs = ""
-                        keywords_detalle = ["oc", "orden", "codigo", "código", "detalle", "id", "fecha"]
-                        if any(k in q.lower() for k in keywords_detalle) and col_id:
+                        if any(k in q.lower() for k in ["oc", "orden", "codigo", "detalle", "fecha"]) and col_id:
                             cols = [c for c in [col_fecha, col_id, col_prod, 'Monto_Clean'] if c]
                             if col_fecha: df_f = df_f.sort_values(col_fecha, ascending=False)
                             txt_ocs = f"\n[TABLA DETALLE OC]\n{df_f[cols].head(10).to_string(index=False)}"
 
-                        contexto_data = f"""
-                        ENTIDAD: {nombre}
-                        TOTAL VENDIDO: ${total:,.0f}
-                        
-                        [ANÁLISIS DE PRECIOS UNITARIOS - MIN/MAX]
-                        (Usa esta tabla para responder preguntas sobre 'precios', 'cuánto vale', 'barato/caro')
-                        {txt_precios_unitarios}
-                        
-                        [TOP PRODUCTOS POR VENTA TOTAL]
-                        {prods}
-                        
-                        {txt_ocs}
-                        """
+                        contexto_data = f"ENTIDAD: {nombre}\nTOTAL: ${total:,.0f}\n[PRECIOS UNITARIOS MIN/MAX]\n{txt_precios_unitarios}\n[PRODUCTOS POR VENTA]\n{prods}\n{txt_ocs}"
                     else:
                         contexto_data = "NO HAY DATOS. LA ENTIDAD NO EXISTE."
 
-                    # 3. LLM
+                    # 3. LLM (SELECTOR POWER)
+                    # Mantenemos la lógica original que selecciona el mejor modelo disponible (usualmente el Flash nuevo)
                     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                     model = genai.GenerativeModel(next((m for m in models if 'flash' in m), models[0]))
                     
                     prompt = f"""
                     ERES CORTEX.
                     ESTADO: {msg_sistema}
-                    
-                    DATOS ANALIZADOS:
+                    DATOS:
                     {contexto_data}
-                    
                     PREGUNTA: "{q}"
-                    
-                    INSTRUCCIONES CLAVE:
-                    1. Si preguntan PRECIOS (mínimo, máximo, unitario), MIRA LA TABLA [ANÁLISIS DE PRECIOS UNITARIOS]. 
-                       No confundas con 'Monto Total'. Di: "El precio mínimo detectado fue $X y el máximo $Y".
+                    INSTRUCCIONES:
+                    1. Si preguntan PRECIOS, usa la tabla [PRECIOS UNITARIOS].
                     2. Si preguntan VENTAS, usa el TOTAL.
-                    3. Si hay tabla de OCs, muéstrala.
+                    3. Sé breve y directo.
                     """
                     
                     res = model.generate_content(prompt)
@@ -294,7 +270,11 @@ if uploaded_file:
                     st.rerun()
 
                 except Exception as e:
-                    st.error(f"Error: {e}")
+                    # GESTIÓN DE ENERGÍA (429)
+                    if "429" in str(e):
+                        st.warning("⚠️ **NIVEL DE ENERGÍA CRÍTICO:** Has agotado las consultas de alta potencia de hoy. El T-9000 entrará en modo de recarga hasta mañana. ¡Gran trabajo hoy, Partner!")
+                    else:
+                        st.error(f"Error: {e}")
 
     except Exception as e:
         st.error(f"❌ Error archivo: {e}")
