@@ -289,8 +289,3 @@ if uploaded_file:
 
     except Exception as e:
         st.error(f"❌ Error procesando el archivo: {e}")
-                except Exception as e:
-                    st.error(f"Error IA: {e}")
-
-    except Exception as e:
-        st.error(f"❌ Error procesando el archivo: {e}")
