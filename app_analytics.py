@@ -8,17 +8,20 @@ import io
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Sentinela - Analítica Comercial", page_icon="📊", layout="wide")
 
-# --- CSS PRO ---
+# --- CSS PRO (ESTILO T-9000) ---
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FAFAFA; }
     h1 { color: #4A90E2; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
+    h2, h3 { font-family: 'Helvetica Neue', sans-serif; }
     div[data-testid="stMetricValue"] { font-size: 24px !important; color: #00D4FF; font-weight: bold; }
     
+    /* ANIMACIÓN ROBOT */
     .robot-container { display: flex; justify-content: center; animation: float-breathe 4s infinite; padding-bottom: 20px; }
     .robot-img { width: 100px; filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.6)); }
     @keyframes float-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
     
+    /* CHAT */
     .chat-box { background-color: #1E2329; padding: 20px; border-radius: 10px; border-left: 5px solid #00D4FF; margin-top: 15px; color: #E0E0E0; }
     .user-msg { text-align: right; color: #A0A0A0; font-style: italic; margin-bottom: 5px; }
     .bot-msg { text-align: left; color: #E0E0E0; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
@@ -33,9 +36,7 @@ with st.sidebar:
     st.title("Cortex Analytics")
     st.info("Sube tu histórico (OC, Licitaciones o Cotizaciones).")
     
-    st.markdown("---")
-    
-    # CONEXIÓN SEGURA A SECRETOS
+    # CONEXIÓN SEGURA
     if "GOOGLE_API_KEY" in st.secrets:
         try:
             genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
@@ -43,10 +44,9 @@ with st.sidebar:
         except Exception as e:
             st.error(f"Error de Llave: {e}")
     else:
-        st.error("⚠️ Falta configurar GOOGLE_API_KEY en secrets.toml")
+        st.error("⚠️ Falta API Key en secrets.toml")
         st.stop()
 
-    st.markdown("---")
     if st.button("🗑️ Reiniciar Memoria"):
         st.session_state.history = []
         st.session_state.entidad_activa = None
@@ -56,32 +56,49 @@ with st.sidebar:
 if "history" not in st.session_state: st.session_state.history = []
 if "entidad_activa" not in st.session_state: st.session_state.entidad_activa = None
 
-# --- FUNCIONES DE INTELIGENCIA ---
+# --- FUNCIONES DE INTELIGENCIA (EL MOTOR DE BÚSQUEDA V3) ---
 def normalizar_agresivo(texto):
+    """Elimina TODO el ruido para comparación bruta."""
     if not isinstance(texto, str): return ""
-    return texto.lower().replace(" ", "").replace(".", "").replace(",", "").replace("-", "")
+    # Quitamos espacios, puntos, comas, guiones y pasamos a minúsculas
+    return texto.lower().replace(" ", "").replace(".", "").replace(",", "").replace("-", "").replace("_", "")
 
 def buscar_entidad_avanzada(df, col_prov, col_org, query):
-    stop_words = ["que", "quien", "dame", "el", "la", "detalle", "oc", "orden", "compra", "producto", "vende", "de", "lo", "los", "las", "dime", "codigo", "precio", "cuanto", "valor"]
-    keywords = [w for w in query.split() if w.lower() not in stop_words and len(w) > 2]
+    """
+    Motor de Búsqueda de Entidades Blindado:
+    1. Limpieza Inteligente de Query.
+    2. Búsqueda por Contención Normalizada (Wall Ride -> wallride -> MATCH comercialwallridesupply).
+    3. Búsqueda Difusa (Fuzzy) para errores tipográficos leves.
+    """
+    # Palabras a ignorar para quedarse con el "nombre clave"
+    stop_words = ["que", "quien", "dame", "el", "la", "detalle", "oc", "orden", "compra", "producto", "vende", "de", "lo", "los", "las", "dime", "codigo", "precio", "cuanto", "valor", "es", "son", "sobre", "del", "al", "en", "para", "por", "sus"]
+    
+    # Extraemos palabras clave reales
+    keywords = [w for w in query.split() if w.lower() not in stop_words and len(w) > 1]
     
     if not keywords: return None, None
 
+    # Creamos un "token único" de la búsqueda (ej: "wallride")
     query_clean = normalizar_agresivo("".join(keywords))
     posibles_cols = [c for c in [col_prov, col_org] if c]
     
-    # 1. Exacto
+    # ESTRATEGIA 1: BARRIDO EXACTO NORMALIZADO (La más efectiva)
     for col in posibles_cols:
         lista_nombres = df[col].dropna().unique()
         for nombre_real in lista_nombres:
-            if query_clean in normalizar_agresivo(str(nombre_real)): return nombre_real, col
+            # Si "wallride" está dentro de "comercialwallridesupplyltda" -> MATCH
+            if query_clean in normalizar_agresivo(str(nombre_real)):
+                return nombre_real, col
 
-    # 2. Fuzzy
+    # ESTRATEGIA 2: BÚSQUEDA DIFUSA (FUZZY) - Por si hay typos (ej: "Walride")
+    # Buscamos coincidencias cercanas para cada palabra clave
     for col in posibles_cols:
         lista_nombres = [str(x) for x in df[col].dropna().unique()]
         for k in keywords:
+            # cutoff=0.6 permite cierta flexibilidad (ej: Walride vs Wallride)
             matches = difflib.get_close_matches(k, lista_nombres, n=1, cutoff=0.6)
-            if matches: return matches[0], col
+            if matches:
+                return matches[0], col
                 
     return None, None
 
@@ -125,13 +142,13 @@ uploaded_file = st.file_uploader("📂 Cargar Datos (Excel/CSV)", type=["xlsx", 
 
 if uploaded_file:
     try:
-        # CARGA
+        # CARGA ROBUSTA
         if uploaded_file.name.endswith('.csv'):
             try: df = pd.read_csv(uploaded_file, encoding='utf-8')
             except: df = pd.read_csv(uploaded_file, encoding='latin-1')
         else: df = pd.read_excel(uploaded_file)
         
-        # DETECCIÓN
+        # DETECCIÓN INTELIGENTE
         col_monto = detectar_columna(df, ['TotalNeto', 'TotalLinea', 'Monto Total', 'Total'])
         col_monto_uni = detectar_columna(df, ['Monto Unitario', 'Precio Unitario', 'PrecioNeto', 'Precio'])
         col_org = detectar_columna(df, ['Nombre Organismo', 'NombreOrganismo', 'NombreUnidad', 'Unidad'], excluir=['Rut'])
@@ -142,6 +159,7 @@ if uploaded_file:
         col_id = detectar_columna(df, ['CodigoExterno', 'Codigo Licitación', 'Orden de Compra', 'Codigo', 'ID', 'OC'])
         col_fecha = detectar_columna(df, ['Fecha Adjudicación', 'FechaCreacion', 'Fecha'])
 
+        # CÁLCULO DE MONTOS (TOTAL vs UNITARIO)
         if col_monto: df['Monto_Clean'] = limpiar_monto(df[col_monto])
         elif col_monto_uni and col_cant: df['Monto_Clean'] = limpiar_monto(df[col_monto_uni]) * pd.to_numeric(df[col_cant], errors='coerce').fillna(1)
         elif col_monto_uni: df['Monto_Clean'] = limpiar_monto(df[col_monto_uni])
@@ -152,7 +170,7 @@ if uploaded_file:
             
         st.divider()
         
-        # KPI
+        # --- SECCIÓN 1: KPIs ---
         k1, k2, k3, k4 = st.columns(4)
         k1.metric("💰 Mercado Total", f"${df['Monto_Clean'].sum():,.0f}")
         k2.metric("🎫 Ticket Promedio", f"${df['Monto_Clean'].mean():,.0f}")
@@ -161,7 +179,7 @@ if uploaded_file:
         k4.metric("🏆 Líder", f"{str(top_lider)[:15]}..")
         st.markdown("---")
 
-        # GRÁFICOS
+        # --- SECCIÓN 2: GRÁFICOS (COMPRADORES Y COMPETENCIA) ---
         c1, c2 = st.columns(2)
         with c1:
             st.subheader("🏛️ Top Compradores")
@@ -180,12 +198,14 @@ if uploaded_file:
 
         st.markdown("---")
         
+        # --- SECCIÓN 3: MAPA (LOLLIPOP) Y PRODUCTOS ---
         c3, c4 = st.columns([1, 1])
         with c3:
             st.subheader("📍 Distribución Geográfica (Norte a Sur)")
             if col_reg:
                 df['Region_Norm'] = df[col_reg].apply(normalizar_region)
                 d_geo = df.groupby('Region_Norm')['Monto_Clean'].sum().reset_index()
+                # Gráfico Lollipop
                 base = alt.Chart(d_geo).encode(y=alt.Y('Region_Norm', sort=ORDEN_CHILE, title=None), x=alt.X('Monto_Clean', title='Monto ($)'), tooltip=['Region_Norm', 'Monto_Clean'])
                 rule = base.mark_rule(color="#525252", opacity=0.6)
                 circle = base.mark_circle(size=200, opacity=1).encode(color=alt.Color('Monto_Clean', scale=alt.Scale(scheme='turbo'), legend=None), size=alt.Size('Monto_Clean', legend=None, scale=alt.Scale(range=[100, 1000])))
@@ -201,7 +221,7 @@ if uploaded_file:
                     x=alt.X('Monto_Clean', title='Monto ($)'), y=alt.Y(col_prod, sort='-x', title=''), color=alt.value('#4A90E2'), tooltip=[col_prod, 'Monto_Clean']
                 ).properties(height=500), use_container_width=True)
 
-        # --- CORTEX CHAT ---
+        # --- SECCIÓN 4: CORTEX CHAT (CEREBRO V24) ---
         st.divider()
         st.subheader("🤖 Cortex Strategic Advisor")
         
@@ -215,9 +235,9 @@ if uploaded_file:
         if st.button("⚡ ANALIZAR") and q:
             st.session_state.history.append({"role": "user", "content": q})
             
-            with st.spinner("Procesando..."):
+            with st.spinner("Cortex procesando consulta..."):
                 try:
-                    # 1. BÚSQUEDA
+                    # 1. BÚSQUEDA DE ENTIDAD (AGRESIVA)
                     nuevo_nombre, nueva_col = buscar_entidad_avanzada(df, col_prov, col_org, q)
                     
                     if nuevo_nombre:
@@ -229,7 +249,7 @@ if uploaded_file:
                         msg_sistema = "⚠️ ALERTA: No se encontró la entidad."
                         st.session_state.entidad_activa = None
 
-                    # 2. DATOS
+                    # 2. EXTRACCIÓN DE DATOS (DATA MINING)
                     contexto_data = ""
                     if st.session_state.entidad_activa:
                         nombre = st.session_state.entidad_activa["nombre"]
@@ -237,40 +257,57 @@ if uploaded_file:
                         df_f = df[df[col] == nombre].copy()
                         total = df_f['Monto_Clean'].sum()
                         
+                        # Top Productos
                         prods = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).to_string() if col_prod else "N/A"
                         
-                        # PRECIOS UNITARIOS
-                        txt_precios_unitarios = "No disponible."
+                        # ANÁLISIS DE PRECIOS UNITARIOS (LA JOYA DEL SISTEMA)
+                        txt_precios_unitarios = "No disponible (Falta Columna Precio)."
                         if col_monto_uni:
+                            # Calculamos Min/Max/Promedio del PRECIO UNITARIO
                             stats = df_f.groupby(col_prod)['Precio_Clean'].agg(['min', 'max', 'mean'])
                             top_prods_names = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).index
                             txt_precios_unitarios = stats.loc[top_prods_names].to_string()
 
-                        # Detalle OCs
+                        # TABLA DE DETALLE (OCs / IDs)
                         txt_ocs = ""
-                        if any(k in q.lower() for k in ["oc", "orden", "codigo", "detalle", "fecha"]) and col_id:
+                        keywords_detalle = ["oc", "orden", "codigo", "código", "detalle", "id", "fecha", "cuando"]
+                        if any(k in q.lower() for k in keywords_detalle) and col_id:
                             cols = [c for c in [col_fecha, col_id, col_prod, 'Monto_Clean'] if c]
                             if col_fecha: df_f = df_f.sort_values(col_fecha, ascending=False)
-                            txt_ocs = f"\n[TABLA DETALLE OC]\n{df_f[cols].head(10).to_string(index=False)}"
+                            # Pasamos los datos crudos para que la IA los formatee en Markdown
+                            txt_ocs = f"\n[TABLA DE DATOS PARA FORMATO MARKDOWN]\n{df_f[cols].head(10).to_string(index=False)}"
 
-                        contexto_data = f"ENTIDAD: {nombre}\nTOTAL: ${total:,.0f}\n[PRECIOS UNITARIOS MIN/MAX]\n{txt_precios_unitarios}\n[PRODUCTOS POR VENTA]\n{prods}\n{txt_ocs}"
+                        contexto_data = f"""
+                        ENTIDAD: {nombre}
+                        TOTAL VENDIDO: ${total:,.0f}
+                        
+                        [PRECIOS UNITARIOS REALES (MIN/MAX)]
+                        {txt_precios_unitarios}
+                        
+                        [TOP PRODUCTOS POR VENTA]
+                        {prods}
+                        
+                        {txt_ocs}
+                        """
                     else:
-                        contexto_data = "NO HAY DATOS. LA ENTIDAD NO EXISTE."
+                        # Si no hay entidad, pasamos contexto general para que no se quede mudo
+                        contexto_data = f"DATOS GENERALES DEL MERCADO:\nTop Productos:\n{df.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string() if col_prod else 'N/A'}"
 
-                    # 3. LLM
+                    # 3. GENERACIÓN LLM (CON INSTRUCCIONES DE FORMATO)
                     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                     model = genai.GenerativeModel(next((m for m in models if 'flash' in m), models[0]))
                     
                     prompt = f"""
-                    ERES CORTEX.
+                    ERES CORTEX ANALYTICS.
                     ESTADO: {msg_sistema}
                     DATOS:
                     {contexto_data}
                     PREGUNTA: "{q}"
+                    
                     INSTRUCCIONES:
-                    1. Si preguntan PRECIOS, usa la tabla [PRECIOS UNITARIOS].
-                    2. Si preguntan VENTAS, usa el TOTAL.
-                    3. Si hay tabla OC, muéstrala.
+                    1. Si el estado es ALERTA, di claramente que no encontraste la empresa.
+                    2. Si preguntan PRECIOS, usa EXCLUSIVAMENTE la tabla [PRECIOS UNITARIOS REALES]. Diferencia entre 'Precio Unitario' y 'Venta Total'.
+                    3. Si hay datos de Tabla OC, GENERA UNA TABLA MARKDOWN (| Fecha | ID | ... |) limpia y legible.
                     """
                     
                     res = model.generate_content(prompt)
@@ -279,7 +316,7 @@ if uploaded_file:
 
                 except Exception as e:
                     if "429" in str(e):
-                         st.error("🚦 **ALERTA DE ENERGÍA:** Se agotó la cuota de la llave actual. Por favor, actualiza la 'GOOGLE_API_KEY' en tu archivo de secretos (secrets.toml) para recargar el sistema.")
+                         st.error("🚦 ¡Sobrecarga de Energía! Actualiza la API Key en secrets.toml para continuar.")
                     else:
                         st.error(f"Error: {e}")
 
