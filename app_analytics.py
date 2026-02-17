@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 import pandas as pd
 import altair as alt
-import pydeck as pdk # Librería de Mapas 3D
+import pydeck as pdk
 import io
 
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
@@ -12,7 +12,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CSS PRO (ANIMACIÓN + ESTILO DARK) ---
+# --- CSS PRO ---
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FAFAFA; }
@@ -25,7 +25,6 @@ st.markdown("""
         font-weight: bold;
     }
     
-    /* ANIMACIÓN ROBOT */
     .robot-container {
         display: flex;
         justify-content: center;
@@ -88,28 +87,27 @@ def limpiar_monto(serie):
         return serie.astype(str).str.replace(r'[$.]', '', regex=True).astype(float)
     return serie
 
-# --- MAPEO GEOESPACIAL CHILE (HARDCODED PARA RAPIDEZ) ---
+# --- MAPEO GEOESPACIAL ---
 COORDENADAS_CHILE = {
     'arica': {'lat': -18.4746, 'lon': -70.2979},
     'tarapaca': {'lat': -20.2133, 'lon': -70.1503},
     'antofagasta': {'lat': -23.6524, 'lon': -70.3954},
     'atacama': {'lat': -27.3668, 'lon': -70.3323},
     'coquimbo': {'lat': -29.9533, 'lon': -71.3395},
-    'valpara': {'lat': -33.0456, 'lon': -71.6199}, # Valparaiso
-    'metropo': {'lat': -33.4372, 'lon': -70.6506}, # Santiago
-    'higgins': {'lat': -34.5873, 'lon': -70.9902}, # O'Higgins
+    'valpara': {'lat': -33.0456, 'lon': -71.6199},
+    'metropo': {'lat': -33.4372, 'lon': -70.6506},
+    'higgins': {'lat': -34.5873, 'lon': -70.9902},
     'maule': {'lat': -35.4267, 'lon': -71.6554},
-    'uble': {'lat': -36.6063, 'lon': -72.1023}, # Ñuble
-    'biob': {'lat': -36.8270, 'lon': -73.0503}, # Biobio
+    'uble': {'lat': -36.6063, 'lon': -72.1023},
+    'biob': {'lat': -36.8270, 'lon': -73.0503},
     'araucan': {'lat': -38.7397, 'lon': -72.6019},
-    'rios': {'lat': -39.8142, 'lon': -73.2459}, # Los Rios
+    'rios': {'lat': -39.8142, 'lon': -73.2459},
     'lagos': {'lat': -41.4693, 'lon': -72.9424},
     'aysen': {'lat': -45.5752, 'lon': -72.0662},
     'magallane': {'lat': -53.1626, 'lon': -70.9081},
 }
 
 def obtener_lat_lon(nombre_region):
-    """Busca coordenadas aproximadas según el nombre de la región."""
     if not isinstance(nombre_region, str): return None, None
     norm = nombre_region.lower()
     for key, val in COORDENADAS_CHILE.items():
@@ -117,10 +115,9 @@ def obtener_lat_lon(nombre_region):
             return val['lat'], val['lon']
     return None, None
 
-# --- TÍTULO ---
+# --- APP ---
 st.title("📊 Tablero de Comando Comercial")
 
-# --- CARGA DE DATOS ---
 uploaded_file = st.file_uploader("📂 Cargar Datos (Excel/CSV)", type=["xlsx", "csv"])
 
 if uploaded_file:
@@ -131,19 +128,18 @@ if uploaded_file:
         else:
             df = pd.read_excel(uploaded_file)
         
+        # Detección de columnas
         col_monto = detectar_columna(df, ['TotalNeto', 'TotalLinea', 'Monto', 'Total'])
         col_org = detectar_columna(df, ['NombreOrganismo', 'Organismo', 'NombreUnidad', 'Unidad', 'Comprador']) 
         col_reg = detectar_columna(df, ['RegionUnidad', 'Region', 'RegionComprador'])
         col_prod = detectar_columna(df, ['Producto', 'NombreProducto', 'Descripcion'])
         col_prov = detectar_columna(df, ['NombreProvider', 'Proveedor', 'Vendedor', 'Empresa']) 
-        col_cant = detectar_columna(df, ['Cantidad', 'Cant'])
-
+        
         if col_monto:
             df['Monto_Clean'] = limpiar_monto(df[col_monto])
         else:
             df['Monto_Clean'] = 0
 
-        # --- DASHBOARD ---
         st.divider()
         
         # 1. KPIs
@@ -163,8 +159,8 @@ if uploaded_file:
 
         st.markdown("---")
 
-        # 2. GRÁFICOS TOP 10 (PODER)
-        st.subheader("🏛️ ¿Quién Compra? vs 🏢 ¿Quién Vende? (TOP 10)")
+        # 2. GRÁFICOS TOP 10
+        st.subheader("🏛️ ¿Quién Compra? vs 🏢 ¿Quién Vende?")
         row1_col1, row1_col2 = st.columns(2)
 
         with row1_col1:
@@ -189,41 +185,40 @@ if uploaded_file:
                 ).properties(height=400)
                 st.altair_chart(chart_prov, use_container_width=True)
 
-        # 3. MAPA Y PRODUCTOS
         st.markdown("---")
+
+        # 3. MAPA Y PRODUCTOS
         st.subheader("🌍 Territorio y Productos")
         row2_col1, row2_col2 = st.columns([1, 1])
 
-        # MAPA DE CALOR CHILE (PyDeck)
         with row2_col1:
-            st.markdown("##### 📍 Concentración de Compras (Mapa)")
+            st.markdown("##### 📍 Concentración de Compras")
             if col_reg and col_monto:
-                # Preparar datos geo
+                # AGRUPAR Y RENOMBRAR PARA EL TOOLTIP (EL FIX CLAVE)
                 df_map = df.groupby(col_reg)['Monto_Clean'].sum().reset_index()
-                df_map['lat'], df_map['lon'] = zip(*df_map[col_reg].apply(obtener_lat_lon))
-                df_map = df_map.dropna(subset=['lat', 'lon']) # Borrar lo que no se pudo geolocalizar
+                df_map.rename(columns={col_reg: 'Region'}, inplace=True) # <--- AQUÍ ESTÁ EL TRUCO
                 
-                # Normalizar radio para el mapa (para que no cubra todo)
+                df_map['lat'], df_map['lon'] = zip(*df_map['Region'].apply(obtener_lat_lon))
+                df_map = df_map.dropna(subset=['lat', 'lon'])
+                
                 max_val = df_map['Monto_Clean'].max()
-                df_map['radius'] = (df_map['Monto_Clean'] / max_val) * 80000 + 10000 # Escala visual
+                df_map['radius'] = (df_map['Monto_Clean'] / max_val) * 80000 + 10000
 
                 if not df_map.empty:
                     layer = pdk.Layer(
                         "ScatterplotLayer",
                         df_map,
                         get_position='[lon, lat]',
-                        get_color='[200, 30, 0, 160]', # Rojo Intenso Semi-transparente
+                        get_color='[200, 30, 0, 160]',
                         get_radius='radius',
                         pickable=True,
                     )
+                    # AHORA EL TOOLTIP FUNCIONARÁ PORQUE LA COLUMNA SE LLAMA 'Region'
                     view_state = pdk.ViewState(latitude=-35.6751, longitude=-71.5430, zoom=3, pitch=0)
-                    st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"text": "{Region}: ${Monto_Clean}"}))
+                    st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state, tooltip={"text": "{Region}\nMonto: ${Monto_Clean}"}))
                 else:
-                    st.info("No se pudieron geolocalizar las regiones automáticamente.")
-            else:
-                st.info("Faltan datos de Región.")
+                    st.info("No se pudieron geolocalizar las regiones.")
 
-        # TOP 10 PRODUCTOS
         with row2_col2:
             st.markdown("##### 📦 Top 10 Productos")
             if col_prod and col_monto:
@@ -249,11 +244,9 @@ if uploaded_file:
         if btn_analizar and pregunta:
             with st.spinner("Analizando Geo-Datos..."):
                 try:
-                    # PREPARAR CONTEXTO PARA IA
                     txt_prod = df.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string() if col_prod else ""
                     txt_prov = df.groupby(col_prov)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string() if col_prov else ""
                     
-                    # CRUCE REGION-PRODUCTO (Vital para la pregunta de Valparaíso)
                     txt_cruce = ""
                     if col_reg and col_prod:
                         try:
@@ -271,7 +264,7 @@ if uploaded_file:
                     [DATOS]
                     Top Productos: {txt_prod}
                     Top Proveedores: {txt_prov}
-                    CRUCE REGION-PRODUCTO (LO QUE MÁS SE VENDE POR ZONA):
+                    CRUCE REGION-PRODUCTO:
                     {txt_cruce}
                     
                     PREGUNTA: "{pregunta}"
