@@ -1,7 +1,7 @@
 import streamlit as st
 import google.generativeai as genai
 import pandas as pd
-import altair as alt # Librería de gráficos pro
+import altair as alt
 import io
 
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
@@ -11,7 +11,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# --- CSS PRO (ESTILO CORTEX ENTERPRISE) ---
+# --- CSS PRO (AJUSTADO PARA CIFRAS COMPLETAS) ---
 st.markdown("""
     <style>
     /* Fondo y Títulos */
@@ -23,19 +23,27 @@ st.markdown("""
         font-family: 'Helvetica Neue', sans-serif;
         font-weight: 700;
     }
-    h1 { color: #4A90E2; } /* Azul Cortex */
+    h1 { color: #4A90E2; }
     
-    /* Métricas (KPI Cards) */
+    /* Métricas (KPI Cards) - AHORA MÁS COMPACTAS */
     div[data-testid="stMetricValue"] {
-        font-size: 32px;
-        color: #00D4FF; /* Cyan Neón para números */
+        font-size: 24px !important; /* Reducido para que quepa el número entero */
+        color: #00D4FF;
         font-weight: bold;
+        word-wrap: break-word;
     }
     div[data-testid="stMetricLabel"] {
-        font-size: 16px;
+        font-size: 14px;
         color: #B0B0B0;
     }
     
+    /* Gráficos */
+    .chart-container {
+        background-color: #1E2329;
+        padding: 10px;
+        border-radius: 8px;
+    }
+
     /* Botón Principal */
     .stButton>button {
         background: linear-gradient(90deg, #2E5CB8 0%, #4A00E0 100%);
@@ -44,10 +52,6 @@ st.markdown("""
         border: none;
         padding: 0.6rem 1.5rem;
         font-weight: 600;
-        transition: transform 0.2s;
-    }
-    .stButton>button:hover {
-        transform: scale(1.05);
     }
     
     /* Chat Box */
@@ -68,7 +72,7 @@ with st.sidebar:
     st.title("Cortex Analytics")
     st.markdown("**Inteligencia de Mercado**")
     st.markdown("---")
-    st.info("Sube tu histórico de Mercado Público para generar el tablero de mando.")
+    st.info("Sube tu histórico de Mercado Público.")
     
     if "GOOGLE_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
@@ -93,7 +97,6 @@ def limpiar_monto(serie):
 
 # --- TÍTULO ---
 st.title("📊 Tablero de Comando Comercial")
-st.markdown("Visualización estratégica de oportunidades en Mercado Público.")
 
 # --- CARGA DE DATOS ---
 uploaded_file = st.file_uploader("📂 Cargar Datos (Excel/CSV)", type=["xlsx", "csv"])
@@ -109,9 +112,10 @@ if uploaded_file:
         
         # 2. Detección Inteligente de Columnas
         col_monto = detectar_columna(df, ['TotalNeto', 'TotalLinea', 'Monto', 'Total'])
-        col_org = detectar_columna(df, ['NombreUnidad', 'NombreOrganismo', 'Organismo']) 
+        col_org = detectar_columna(df, ['NombreUnidad', 'NombreOrganismo', 'Organismo', 'Comprador']) 
         col_reg = detectar_columna(df, ['RegionUnidad', 'Region'])
         col_prod = detectar_columna(df, ['Producto', 'NombreProducto', 'Descripcion'])
+        col_prov = detectar_columna(df, ['NombreProvider', 'Proveedor', 'Vendedor', 'Empresa']) # Nueva columna clave
         col_cant = detectar_columna(df, ['Cantidad', 'Cant'])
 
         # 3. Procesamiento de Datos (Limpieza)
@@ -120,10 +124,10 @@ if uploaded_file:
         else:
             df['Monto_Clean'] = 0
 
-        # --- DASHBOARD VISUAL DE IMPACTO ---
+        # --- DASHBOARD VISUAL (V6) ---
         st.divider()
         
-        # FILA 1: KPIs CLAVE (Números Grandes)
+        # === FILA 1: KPIs (LA WINCHA) ===
         kpi1, kpi2, kpi3, kpi4 = st.columns(4)
         
         # KPI 1: Total Transado
@@ -134,78 +138,106 @@ if uploaded_file:
         avg_ticket = df['Monto_Clean'].mean()
         kpi2.metric("🎫 Ticket Promedio", f"${avg_ticket:,.0f}")
         
-        # KPI 3: Total OC/Licitaciones
-        kpi3.metric("📄 Total Operaciones", f"{len(df):,}")
+        # KPI 3: Operaciones
+        kpi3.metric("📄 Total Ops", f"{len(df):,}")
         
-        # KPI 4: Top Comprador
-        if col_org:
+        # KPI 4: Líder del Mercado (Proveedor más grande si existe, o Comprador)
+        if col_prov and col_monto:
+            top_player = df.groupby(col_prov)['Monto_Clean'].sum().idxmax()
+            kpi4.metric("🏆 Top Proveedor", f"{str(top_player)[:15]}..")
+        elif col_org:
             top_buyer = df[col_org].value_counts().idxmax()
-            kpi4.metric("🏆 Comprador #1", f"{str(top_buyer)[:15]}..")
+            kpi4.metric("🏆 Top Comprador", f"{str(top_buyer)[:15]}..")
         else:
-            kpi4.metric("🏆 Comprador #1", "N/A")
+            kpi4.metric("🏆 Líder", "N/A")
 
         st.markdown("---")
 
-        # FILA 2: GRÁFICOS ESTRATÉGICOS (Aquí está la magia visual)
-        chart_col1, chart_col2 = st.columns(2)
+        # === FILA 2: GRÁFICOS DE PODER (ORGANISMOS VS PROVEEDORES) ===
+        st.subheader("🏛️ ¿Quién Compra? vs 🏢 ¿Quién Vende?")
+        row1_col1, row1_col2 = st.columns(2)
 
-        with chart_col1:
-            st.subheader("📦 Top 5 Productos (Por Monto)")
+        # GRÁFICO 1: TOP ORGANISMOS (COMPRADORES)
+        with row1_col1:
+            if col_org and col_monto:
+                chart_data_org = df.groupby(col_org)['Monto_Clean'].sum().reset_index()
+                chart_data_org = chart_data_org.sort_values('Monto_Clean', ascending=False).head(5)
+                
+                chart_org = alt.Chart(chart_data_org).mark_bar(cornerRadius=5).encode(
+                    x=alt.X('Monto_Clean', title='Monto ($)'),
+                    y=alt.Y(col_org, sort='-x', title='Organismo Público'),
+                    color=alt.value('#FF6B6B'), # Rojo Suave (Compras)
+                    tooltip=[col_org, alt.Tooltip('Monto_Clean', format=',.0f')]
+                ).properties(title="Top 5 Organismos Compradores", height=300)
+                st.altair_chart(chart_org, use_container_width=True)
+            else:
+                st.info("Faltan datos de Organismo para este gráfico.")
+
+        # GRÁFICO 2: TOP PROVEEDORES (COMPETENCIA)
+        with row1_col2:
+            if col_prov and col_monto:
+                chart_data_prov = df.groupby(col_prov)['Monto_Clean'].sum().reset_index()
+                chart_data_prov = chart_data_prov.sort_values('Monto_Clean', ascending=False).head(5)
+                
+                chart_prov = alt.Chart(chart_data_prov).mark_bar(cornerRadius=5).encode(
+                    x=alt.X('Monto_Clean', title='Monto ($)'),
+                    y=alt.Y(col_prov, sort='-x', title='Proveedor / Competidor'),
+                    color=alt.value('#4ECDC4'), # Verde Agua (Ventas)
+                    tooltip=[col_prov, alt.Tooltip('Monto_Clean', format=',.0f')]
+                ).properties(title="Top 5 Proveedores (Competencia)", height=300)
+                st.altair_chart(chart_prov, use_container_width=True)
+            else:
+                st.info("No detecté la columna 'NombreProveedor' o similar.")
+
+        # === FILA 3: DETALLES (PRODUCTOS Y REGIONES) ===
+        st.markdown("### 📦 ¿Qué se vende? y ¿Dónde?")
+        row2_col1, row2_col2 = st.columns(2)
+
+        # GRÁFICO 3: TOP PRODUCTOS
+        with row2_col1:
             if col_prod and col_monto:
-                # Agrupamos datos para el gráfico
                 chart_data_prod = df.groupby(col_prod)['Monto_Clean'].sum().reset_index()
                 chart_data_prod = chart_data_prod.sort_values('Monto_Clean', ascending=False).head(5)
                 
-                # Gráfico de Barras Horizontal con Altair
-                bar_chart = alt.Chart(chart_data_prod).mark_bar(cornerRadius=5).encode(
-                    x=alt.X('Monto_Clean', title='Monto Total ($)'),
+                chart_prod = alt.Chart(chart_data_prod).mark_bar(cornerRadius=5).encode(
+                    x=alt.X('Monto_Clean', title='Monto ($)'),
                     y=alt.Y(col_prod, sort='-x', title='Producto'),
                     color=alt.value('#4A90E2'), # Azul Cortex
                     tooltip=[col_prod, alt.Tooltip('Monto_Clean', format=',.0f')]
-                ).properties(height=300)
-                
-                st.altair_chart(bar_chart, use_container_width=True)
-            else:
-                st.warning("Faltan datos de Producto o Monto para graficar.")
+                ).properties(height=250)
+                st.altair_chart(chart_prod, use_container_width=True)
 
-        with chart_col2:
-            st.subheader("🌍 Mapa de Calor Regional")
+        # GRÁFICO 4: REGIONES
+        with row2_col2:
             if col_reg and col_monto:
-                # Agrupamos por región
                 chart_data_reg = df.groupby(col_reg)['Monto_Clean'].sum().reset_index()
-                chart_data_reg = chart_data_reg.sort_values('Monto_Clean', ascending=False).head(7)
+                chart_data_reg = chart_data_reg.sort_values('Monto_Clean', ascending=False).head(5)
                 
-                # Gráfico de Barras Vertical
-                reg_chart = alt.Chart(chart_data_reg).mark_bar(cornerRadius=5).encode(
-                    x=alt.X(col_reg, sort='-y', title='Región'),
-                    y=alt.Y('Monto_Clean', title='Inversión ($)'),
-                    color=alt.value('#00D4FF'), # Cyan Cortex
+                chart_reg = alt.Chart(chart_data_reg).mark_bar(cornerRadius=5).encode(
+                    x=alt.X(col_reg, sort='-y', title='Región'), # Barras Verticales mejor aquí
+                    y=alt.Y('Monto_Clean', title='Monto ($)'),
+                    color=alt.value('#A3A1FB'), # Lila
                     tooltip=[col_reg, alt.Tooltip('Monto_Clean', format=',.0f')]
-                ).properties(height=300)
-                
-                st.altair_chart(reg_chart, use_container_width=True)
-            else:
-                st.warning("Faltan datos de Región para graficar.")
+                ).properties(height=250)
+                st.altair_chart(chart_reg, use_container_width=True)
 
-        # --- SECCIÓN: CONSULTOR IA ---
+        # --- CONSULTOR IA ---
         st.divider()
         st.subheader("🤖 Cortex Strategic Advisor")
-        st.info("¿Qué te llama la atención de los gráficos? Pregúntame detalles.")
         
         col_input, col_go = st.columns([4, 1])
         with col_input:
-            pregunta = st.text_input("Pregunta al Agente:", placeholder="Ej: ¿Por qué la Región X compra tanto Producto Y?", label_visibility="collapsed")
+            pregunta = st.text_input("Pregunta al Agente:", placeholder="Ej: ¿Qué estrategia tiene el proveedor líder? / ¿Por qué compra tanto el Organismo X?", label_visibility="collapsed")
         with col_go:
             btn_analizar = st.button("⚡ INVESTIGAR")
 
         if btn_analizar and pregunta:
-            with st.spinner("Cruzando datos de gráficos con inteligencia histórica..."):
+            with st.spinner("Analizando competencia y patrones..."):
                 try:
-                    # PREPARAR CONTEXTO PARA IA
-                    # Le pasamos el TOP 5 ya calculado para que no alucine
-                    top_5_txt = ""
-                    if col_prod:
-                         top_5_txt = df.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string()
+                    # PREPARAR DATOS DUROS PARA LA IA
+                    top_prov_txt = ""
+                    if col_prov:
+                         top_prov_txt = df.groupby(col_prov)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string()
                     
                     # SELECTOR DE MODELO
                     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
@@ -213,33 +245,27 @@ if uploaded_file:
                     model = genai.GenerativeModel(model_name)
 
                     prompt = f"""
-                    ERES UN ANALISTA DE INTELIGENCIA DE NEGOCIOS.
-                    Tienes en pantalla un Dashboard con estos datos clave:
+                    ERES UN ESTRATEGA DE LICITACIONES PÚBLICAS (11 AÑOS DE EXPERIENCIA).
                     
-                    [KPI MACRO]
+                    [ESTADO DEL MERCADO]
                     Total Mercado: ${total_monto:,.0f}
-                    Ticket Promedio: ${avg_ticket:,.0f}
                     
-                    [TOP 5 PRODUCTOS REALES]
-                    {top_5_txt}
+                    [TOP COMPETENCIA (PROVEEDORES)]
+                    {top_prov_txt}
                     
                     PREGUNTA DEL USUARIO: "{pregunta}"
                     
                     INSTRUCCIONES:
-                    1. Responde basándote en los datos duros.
-                    2. Sé breve, directo y estratégico.
-                    3. Si detectas una oportunidad (ej: un producto que se vende mucho pero a bajo precio), menciónala.
+                    1. Si preguntan por competencia, analiza la lista de Top Proveedores.
+                    2. Si preguntan por estrategia, sugiere precios o alianzas.
+                    3. Sé breve y táctico.
                     """
                     
                     response = model.generate_content(prompt)
                     st.markdown(f'<div class="chat-box">{response.text}</div>', unsafe_allow_html=True)
 
                 except Exception as e:
-                    st.error(f"Error en IA: {e}")
-
-        # DATA RAW (Escondida pero accesible)
-        with st.expander("🔍 Ver Datos Crudos (Tabla Completa)"):
-            st.dataframe(df)
+                    st.error(f"Error IA: {e}")
 
     except Exception as e:
         st.error(f"❌ Error procesando el archivo: {e}")
