@@ -49,50 +49,38 @@ with st.sidebar:
 if "history" not in st.session_state: st.session_state.history = []
 if "entidad_activa" not in st.session_state: st.session_state.entidad_activa = None
 
-# --- MOTOR DE BÚSQUEDA NUCLEAR (V26) ---
+# --- MOTOR DE BÚSQUEDA NUCLEAR (V27 - CON FILTRO DE RUIDO) ---
 def normalizar_nuclear(texto):
-    """Destruye cualquier formato: minusculas, sin espacios, sin simbolos."""
     if not isinstance(texto, str): return ""
     return texto.lower().replace(" ", "").replace(".", "").replace(",", "").replace("-", "").replace("_", "").replace("/", "")
 
 def buscar_nuclear(df, col_prov, col_org, query):
-    """
-    Busca por coincidencia de ADN (slug in slug).
-    Si falla en columnas clave, busca en TODO el DataFrame.
-    """
-    log = [] # Para depuración
-    stop_words = ["que", "quien", "dame", "el", "la", "detalle", "oc", "orden", "compra", "producto", "vende", "de", "lo", "los", "las", "dime", "codigo", "precio", "cuanto", "valor", "es", "son", "sobre", "del", "al", "en", "para", "por", "sus"]
+    log = []
+    # LISTA DE STOP WORDS AMPLIADA PARA EVITAR FALSOS POSITIVOS CON "DETALLE", "PRODUCTOS", ETC.
+    stop_words = ["que", "quien", "dame", "el", "la", "detalle", "oc", "orden", "compra", "producto", "vende", "de", "lo", "los", "las", "dime", "codigo", "precio", "cuanto", "valor", "es", "son", "sobre", "del", "al", "en", "para", "por", "sus", "mis", "mas", "menos", "mejor", "peor", "lista", "tabla", "ver", "mostrar", "quiero", "saber"]
     
-    # 1. Limpiar Query
-    keywords = [w for w in query.split() if w.lower() not in stop_words and len(w) > 1]
+    keywords = [w for w in query.split() if w.lower() not in stop_words and len(w) > 2]
+    
     if not keywords: 
-        return None, None, ["Query vacía después de limpiar."]
+        return None, None, ["Query solo contenía palabras comunes (Stop Words)."]
     
-    # "Wall Ride" -> "wallride"
     query_slug = normalizar_nuclear("".join(keywords))
-    log.append(f"Slug de búsqueda: '{query_slug}'")
+    log.append(f"Slug buscado: '{query_slug}'")
 
-    # 2. Definir dónde buscar (Prioridad: Proveedor -> Organismo -> Todo lo demás)
     cols_prioridad = [c for c in [col_prov, col_org] if c]
     cols_extra = [c for c in df.select_dtypes(include=['object']).columns if c not in cols_prioridad]
-    
     todas_cols = cols_prioridad + cols_extra
     
-    # 3. Ejecutar Barrido Nuclear
     for col in todas_cols:
-        # Optimización: Solo buscar en valores únicos para no iterar millones de filas
         valores_unicos = df[col].dropna().unique()
-        
         for val in valores_unicos:
             val_str = str(val)
             val_slug = normalizar_nuclear(val_str)
-            
-            # MAGIA: ¿Está 'wallride' dentro de 'comercialwallridesupplyltda'?
             if query_slug in val_slug:
-                log.append(f"✅ MATCH ENCONTRADO en columna '{col}': '{val}'")
+                log.append(f"✅ MATCH: '{val}' en '{col}'")
                 return val, col, log
                 
-    log.append("❌ Fin del barrido nuclear. No se encontraron coincidencias.")
+    log.append("❌ Sin coincidencias.")
     return None, None, log
 
 # --- FUNCIONES BASE ---
@@ -214,10 +202,16 @@ if uploaded_file:
                     x=alt.X('Monto_Clean', title='Monto ($)'), y=alt.Y(col_prod, sort='-x', title=''), color=alt.value('#4A90E2'), tooltip=[col_prod, 'Monto_Clean']
                 ).properties(height=500), use_container_width=True)
 
-        # --- CHAT V26 (CON BARRIDO NUCLEAR) ---
+        # --- CHAT ---
         st.divider()
         st.subheader("🤖 Cortex Strategic Advisor")
         
+        # Indicador Visual de Memoria (EL FIX)
+        if st.session_state.entidad_activa:
+            st.info(f"🔵 **Foco Actual:** Conversando sobre **{st.session_state.entidad_activa['nombre']}**")
+        else:
+            st.info("⚪ **Foco Actual:** Mercado General (Sin selección)")
+
         for msg in st.session_state.history:
             role = "user-msg" if msg["role"] == "user" else "bot-msg"
             icon = "👤" if msg["role"] == "user" else "🤖"
@@ -228,27 +222,30 @@ if uploaded_file:
         if st.button("⚡ ANALIZAR") and q:
             st.session_state.history.append({"role": "user", "content": q})
             
-            with st.spinner("Ejecutando Barrido Nuclear..."):
+            with st.spinner("Procesando..."):
                 try:
                     # 1. BÚSQUEDA NUCLEAR
                     nuevo_nombre, nueva_col, log_busqueda = buscar_nuclear(df, col_prov, col_org, q)
                     
-                    # LOG VISIBLE (DEBUG PARA QUE VEAS QUE FUNCIONA)
-                    with st.expander("🕵️‍♂️ Ver Log de Búsqueda (Debug)"):
-                        st.write(log_busqueda)
-                        if nuevo_nombre: st.success(f"¡Encontrado! -> {nuevo_nombre}")
-                        else: st.error("No encontrado en barrido nuclear.")
+                    with st.expander("🕵️‍♂️ Debug Búsqueda"): st.write(log_busqueda)
 
+                    # --- LÓGICA DE MEMORIA PEGAJOSA (STICKY MEMORY) ---
+                    # Si encontramos alguien nuevo -> CAMBIAMOS
                     if nuevo_nombre:
                         st.session_state.entidad_activa = {"nombre": nuevo_nombre, "columna": nueva_col}
-                        msg_sistema = f"✅ ENTIDAD DETECTADA: '{nuevo_nombre}'."
+                        msg_sistema = f"✅ NUEVO FOCO: '{nuevo_nombre}'."
+                    
+                    # Si NO encontramos nada nuevo, PERO ya estábamos hablando de alguien -> MANTENEMOS
                     elif st.session_state.entidad_activa:
-                        msg_sistema = f"MANTENIENDO FOCO: '{st.session_state.entidad_activa['nombre']}'."
+                        msg_sistema = f"🔄 MANTENIENDO FOCO (No se detectó cambio de tema): '{st.session_state.entidad_activa['nombre']}'."
+                    
+                    # Si no hay nada ni antes ni ahora -> MERCADO GENERAL
                     else:
-                        msg_sistema = "⚠️ ALERTA: La entidad no existe en el archivo cargado."
+                        msg_sistema = "⚠️ BÚSQUEDA GENERAL: No se detectó entidad específica."
                         st.session_state.entidad_activa = None
+                    # --------------------------------------------------
 
-                    # 2. DATOS
+                    # 2. EXTRACCIÓN DE DATOS
                     contexto_data = ""
                     if st.session_state.entidad_activa:
                         nombre = st.session_state.entidad_activa["nombre"]
@@ -258,24 +255,23 @@ if uploaded_file:
                         
                         prods = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).to_string() if col_prod else "N/A"
                         
-                        # PRECIOS
                         txt_precios_unitarios = "No disponible."
                         if col_monto_uni:
                             stats = df_f.groupby(col_prod)['Precio_Clean'].agg(['min', 'max', 'mean'])
                             top_names = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).index
                             txt_precios_unitarios = stats.loc[top_names].to_string()
 
-                        # DETALLE OC
                         txt_ocs = ""
                         keywords_detalle = ["oc", "orden", "codigo", "código", "detalle", "id", "fecha"]
                         if any(k in q.lower() for k in keywords_detalle) and col_id:
                             cols = [c for c in [col_fecha, col_id, col_prod, 'Monto_Clean'] if c]
                             if col_fecha: df_f = df_f.sort_values(col_fecha, ascending=False)
-                            txt_ocs = f"\n[TABLA DETALLE OC (RAW)]\n{df_f[cols].head(10).to_string(index=False)}"
+                            txt_ocs = f"\n[TABLA DETALLE OC]\n{df_f[cols].head(10).to_string(index=False)}"
 
                         contexto_data = f"ENTIDAD: {nombre}\nTOTAL: ${total:,.0f}\n[PRECIOS UNITARIOS MIN/MAX]\n{txt_precios_unitarios}\n[PRODUCTOS]\n{prods}\n{txt_ocs}"
                     else:
-                        contexto_data = "NO HAY DATOS. LA ENTIDAD NO EXISTE EN LA BASE."
+                        # Si es mercado general, mostramos el TOP general
+                        contexto_data = f"DATOS GENERALES:\nTop Productos Mercado:\n{df.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string() if col_prod else 'N/A'}"
 
                     # 3. LLM
                     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
@@ -284,13 +280,14 @@ if uploaded_file:
                     prompt = f"""
                     ERES CORTEX.
                     ESTADO: {msg_sistema}
-                    DATOS:
+                    DATOS DISPONIBLES:
                     {contexto_data}
                     PREGUNTA: "{q}"
+                    
                     INSTRUCCIONES:
-                    1. Si el estado es ALERTA, di que no encontraste la empresa.
+                    1. Si el estado es MANTENIENDO FOCO, responde asumiendo que hablamos de la misma empresa.
                     2. Si preguntan precios, usa la tabla [PRECIOS UNITARIOS].
-                    3. Si hay tabla OC, GENERA UNA TABLA MARKDOWN bonita.
+                    3. Si preguntan ventas, usa el TOTAL.
                     """
                     
                     res = model.generate_content(prompt)
@@ -298,10 +295,8 @@ if uploaded_file:
                     st.rerun()
 
                 except Exception as e:
-                    if "429" in str(e):
-                         st.error("🚦 ¡Sobrecarga! Actualiza la API Key.")
-                    else:
-                        st.error(f"Error: {e}")
+                    if "429" in str(e): st.error("🚦 Recarga API Key.")
+                    else: st.error(f"Error: {e}")
 
     except Exception as e:
         st.error(f"❌ Error archivo: {e}")
