@@ -8,29 +8,23 @@ import io
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Sentinela - Analítica Comercial", page_icon="📊", layout="wide")
 
-# --- CSS PRO (ESTILO T-9000) ---
+# --- CSS PRO ---
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FAFAFA; }
     h1 { color: #4A90E2; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
-    h2, h3 { font-family: 'Helvetica Neue', sans-serif; }
     div[data-testid="stMetricValue"] { font-size: 24px !important; color: #00D4FF; font-weight: bold; }
-    
-    /* ANIMACIÓN ROBOT */
     .robot-container { display: flex; justify-content: center; animation: float-breathe 4s infinite; padding-bottom: 20px; }
     .robot-img { width: 100px; filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.6)); }
     @keyframes float-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-    
-    /* CHAT */
     .chat-box { background-color: #1E2329; padding: 20px; border-radius: 10px; border-left: 5px solid #00D4FF; margin-top: 15px; color: #E0E0E0; }
     .user-msg { text-align: right; color: #A0A0A0; font-style: italic; margin-bottom: 5px; }
     .bot-msg { text-align: left; color: #E0E0E0; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
-    
     .stButton>button { background: linear-gradient(90deg, #2E5CB8 0%, #4A00E0 100%); color: white; border-radius: 8px; border: none; padding: 0.6rem 1.5rem; font-weight: 600; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- SIDEBAR (SEGURA) ---
+# --- SIDEBAR ---
 with st.sidebar:
     st.markdown("""<div class="robot-container"><img src="https://cdn-icons-png.flaticon.com/512/4712/4712035.png" class="robot-img"></div>""", unsafe_allow_html=True)
     st.title("Cortex Analytics")
@@ -56,52 +50,60 @@ with st.sidebar:
 if "history" not in st.session_state: st.session_state.history = []
 if "entidad_activa" not in st.session_state: st.session_state.entidad_activa = None
 
-# --- FUNCIONES DE INTELIGENCIA (EL MOTOR DE BÚSQUEDA V3) ---
-def normalizar_agresivo(texto):
-    """Elimina TODO el ruido para comparación bruta."""
+# --- MOTOR DE BÚSQUEDA V25 (EL SABUESO) ---
+def normalizar_simple(texto):
+    """Solo minúsculas para comparaciones rápidas."""
     if not isinstance(texto, str): return ""
-    # Quitamos espacios, puntos, comas, guiones y pasamos a minúsculas
-    return texto.lower().replace(" ", "").replace(".", "").replace(",", "").replace("-", "").replace("_", "")
+    return texto.lower()
 
-def buscar_entidad_avanzada(df, col_prov, col_org, query):
+def buscar_entidad_sabueso(df, col_prov, col_org, query):
     """
-    Motor de Búsqueda de Entidades Blindado:
-    1. Limpieza Inteligente de Query.
-    2. Búsqueda por Contención Normalizada (Wall Ride -> wallride -> MATCH comercialwallridesupply).
-    3. Búsqueda Difusa (Fuzzy) para errores tipográficos leves.
+    Busca si TODAS las palabras clave del usuario están presentes en algún nombre.
+    Ej: "Wall Ride" -> Busca filas que tengan "wall" Y "ride".
+    Si falla en columnas específicas, busca en TODO el dataframe.
     """
-    # Palabras a ignorar para quedarse con el "nombre clave"
     stop_words = ["que", "quien", "dame", "el", "la", "detalle", "oc", "orden", "compra", "producto", "vende", "de", "lo", "los", "las", "dime", "codigo", "precio", "cuanto", "valor", "es", "son", "sobre", "del", "al", "en", "para", "por", "sus"]
     
-    # Extraemos palabras clave reales
-    keywords = [w for w in query.split() if w.lower() not in stop_words and len(w) > 1]
+    # Palabras clave limpias (ej: ['wall', 'ride'])
+    keywords = [w.lower() for w in query.split() if w.lower() not in stop_words and len(w) > 1]
     
     if not keywords: return None, None
 
-    # Creamos un "token único" de la búsqueda (ej: "wallride")
-    query_clean = normalizar_agresivo("".join(keywords))
-    posibles_cols = [c for c in [col_prov, col_org] if c]
+    # 1. BÚSQUEDA EN COLUMNAS PRINCIPALES (PROVEEDOR / ORGANISMO)
+    columnas_objetivo = [c for c in [col_prov, col_org] if c]
     
-    # ESTRATEGIA 1: BARRIDO EXACTO NORMALIZADO (La más efectiva)
-    for col in posibles_cols:
-        lista_nombres = df[col].dropna().unique()
-        for nombre_real in lista_nombres:
-            # Si "wallride" está dentro de "comercialwallridesupplyltda" -> MATCH
-            if query_clean in normalizar_agresivo(str(nombre_real)):
-                return nombre_real, col
+    for col in columnas_objetivo:
+        unique_vals = df[col].dropna().unique()
+        for val in unique_vals:
+            val_str = str(val).lower()
+            # ¿Están TODAS las palabras clave en este nombre?
+            # Ej: "wall" in "comercial wallride" AND "ride" in "comercial wallride"
+            if all(k in val_str for k in keywords):
+                return val, col
+            
+            # Intento fusionado (por si "wallride" está junto)
+            val_str_nospace = val_str.replace(" ", "")
+            joined_keyword = "".join(keywords)
+            if joined_keyword in val_str_nospace:
+                return val, col
 
-    # ESTRATEGIA 2: BÚSQUEDA DIFUSA (FUZZY) - Por si hay typos (ej: "Walride")
-    # Buscamos coincidencias cercanas para cada palabra clave
-    for col in posibles_cols:
-        lista_nombres = [str(x) for x in df[col].dropna().unique()]
-        for k in keywords:
-            # cutoff=0.6 permite cierta flexibilidad (ej: Walride vs Wallride)
-            matches = difflib.get_close_matches(k, lista_nombres, n=1, cutoff=0.6)
-            if matches:
-                return matches[0], col
-                
+    # 2. BÚSQUEDA PROFUNDA (FALLBACK)
+    # Si no lo encontramos en las columnas obvias, buscamos en CUALQUIER columna de texto
+    # Esto es más lento pero infalible.
+    print("Iniciando búsqueda profunda...")
+    text_cols = df.select_dtypes(include=['object']).columns
+    for col in text_cols:
+        if col in columnas_objetivo: continue # Ya revisamos estas
+        
+        unique_vals = df[col].dropna().unique()
+        for val in unique_vals:
+            val_str = str(val).lower()
+            if all(k in val_str for k in keywords):
+                return val, col # Encontrado en una columna inesperada (ej: Descripcion)
+
     return None, None
 
+# --- FUNCIONES BASE ---
 def detectar_columna(df, posibles, excluir=[]):
     for p in posibles:
         for col in df.columns:
@@ -142,13 +144,13 @@ uploaded_file = st.file_uploader("📂 Cargar Datos (Excel/CSV)", type=["xlsx", 
 
 if uploaded_file:
     try:
-        # CARGA ROBUSTA
+        # CARGA
         if uploaded_file.name.endswith('.csv'):
             try: df = pd.read_csv(uploaded_file, encoding='utf-8')
             except: df = pd.read_csv(uploaded_file, encoding='latin-1')
         else: df = pd.read_excel(uploaded_file)
         
-        # DETECCIÓN INTELIGENTE
+        # DETECCIÓN
         col_monto = detectar_columna(df, ['TotalNeto', 'TotalLinea', 'Monto Total', 'Total'])
         col_monto_uni = detectar_columna(df, ['Monto Unitario', 'Precio Unitario', 'PrecioNeto', 'Precio'])
         col_org = detectar_columna(df, ['Nombre Organismo', 'NombreOrganismo', 'NombreUnidad', 'Unidad'], excluir=['Rut'])
@@ -159,7 +161,7 @@ if uploaded_file:
         col_id = detectar_columna(df, ['CodigoExterno', 'Codigo Licitación', 'Orden de Compra', 'Codigo', 'ID', 'OC'])
         col_fecha = detectar_columna(df, ['Fecha Adjudicación', 'FechaCreacion', 'Fecha'])
 
-        # CÁLCULO DE MONTOS (TOTAL vs UNITARIO)
+        # MONTOS
         if col_monto: df['Monto_Clean'] = limpiar_monto(df[col_monto])
         elif col_monto_uni and col_cant: df['Monto_Clean'] = limpiar_monto(df[col_monto_uni]) * pd.to_numeric(df[col_cant], errors='coerce').fillna(1)
         elif col_monto_uni: df['Monto_Clean'] = limpiar_monto(df[col_monto_uni])
@@ -170,7 +172,7 @@ if uploaded_file:
             
         st.divider()
         
-        # --- SECCIÓN 1: KPIs ---
+        # KPIs
         k1, k2, k3, k4 = st.columns(4)
         k1.metric("💰 Mercado Total", f"${df['Monto_Clean'].sum():,.0f}")
         k2.metric("🎫 Ticket Promedio", f"${df['Monto_Clean'].mean():,.0f}")
@@ -179,7 +181,7 @@ if uploaded_file:
         k4.metric("🏆 Líder", f"{str(top_lider)[:15]}..")
         st.markdown("---")
 
-        # --- SECCIÓN 2: GRÁFICOS (COMPRADORES Y COMPETENCIA) ---
+        # GRÁFICOS
         c1, c2 = st.columns(2)
         with c1:
             st.subheader("🏛️ Top Compradores")
@@ -198,14 +200,13 @@ if uploaded_file:
 
         st.markdown("---")
         
-        # --- SECCIÓN 3: MAPA (LOLLIPOP) Y PRODUCTOS ---
+        # GEO Y PRODUCTOS
         c3, c4 = st.columns([1, 1])
         with c3:
-            st.subheader("📍 Distribución Geográfica (Norte a Sur)")
+            st.subheader("📍 Distribución Geográfica")
             if col_reg:
                 df['Region_Norm'] = df[col_reg].apply(normalizar_region)
                 d_geo = df.groupby('Region_Norm')['Monto_Clean'].sum().reset_index()
-                # Gráfico Lollipop
                 base = alt.Chart(d_geo).encode(y=alt.Y('Region_Norm', sort=ORDEN_CHILE, title=None), x=alt.X('Monto_Clean', title='Monto ($)'), tooltip=['Region_Norm', 'Monto_Clean'])
                 rule = base.mark_rule(color="#525252", opacity=0.6)
                 circle = base.mark_circle(size=200, opacity=1).encode(color=alt.Color('Monto_Clean', scale=alt.Scale(scheme='turbo'), legend=None), size=alt.Size('Monto_Clean', legend=None, scale=alt.Scale(range=[100, 1000])))
@@ -221,7 +222,7 @@ if uploaded_file:
                     x=alt.X('Monto_Clean', title='Monto ($)'), y=alt.Y(col_prod, sort='-x', title=''), color=alt.value('#4A90E2'), tooltip=[col_prod, 'Monto_Clean']
                 ).properties(height=500), use_container_width=True)
 
-        # --- SECCIÓN 4: CORTEX CHAT (CEREBRO V24) ---
+        # --- CHAT ---
         st.divider()
         st.subheader("🤖 Cortex Strategic Advisor")
         
@@ -235,21 +236,21 @@ if uploaded_file:
         if st.button("⚡ ANALIZAR") and q:
             st.session_state.history.append({"role": "user", "content": q})
             
-            with st.spinner("Cortex procesando consulta..."):
+            with st.spinner("Rastreando entidad..."):
                 try:
-                    # 1. BÚSQUEDA DE ENTIDAD (AGRESIVA)
-                    nuevo_nombre, nueva_col = buscar_entidad_avanzada(df, col_prov, col_org, q)
+                    # 1. BÚSQUEDA V25 (EL SABUESO)
+                    nuevo_nombre, nueva_col = buscar_entidad_sabueso(df, col_prov, col_org, q)
                     
                     if nuevo_nombre:
                         st.session_state.entidad_activa = {"nombre": nuevo_nombre, "columna": nueva_col}
-                        msg_sistema = f"✅ ENTIDAD DETECTADA: '{nuevo_nombre}'."
+                        msg_sistema = f"✅ ENTIDAD ENCONTRADA: '{nuevo_nombre}' (Columna: {nueva_col})."
                     elif st.session_state.entidad_activa:
                         msg_sistema = f"MANTENIENDO FOCO: '{st.session_state.entidad_activa['nombre']}'."
                     else:
-                        msg_sistema = "⚠️ ALERTA: No se encontró la entidad."
+                        msg_sistema = f"⚠️ ALERTA: No se encontró 'Wallride' en columnas '{col_prov}' ni '{col_org}'. Revisa si el nombre está bien escrito en el Excel."
                         st.session_state.entidad_activa = None
 
-                    # 2. EXTRACCIÓN DE DATOS (DATA MINING)
+                    # 2. DATOS
                     contexto_data = ""
                     if st.session_state.entidad_activa:
                         nombre = st.session_state.entidad_activa["nombre"]
@@ -257,57 +258,42 @@ if uploaded_file:
                         df_f = df[df[col] == nombre].copy()
                         total = df_f['Monto_Clean'].sum()
                         
-                        # Top Productos
                         prods = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).to_string() if col_prod else "N/A"
                         
-                        # ANÁLISIS DE PRECIOS UNITARIOS (LA JOYA DEL SISTEMA)
-                        txt_precios_unitarios = "No disponible (Falta Columna Precio)."
+                        # PRECIOS
+                        txt_precios_unitarios = "No disponible."
                         if col_monto_uni:
-                            # Calculamos Min/Max/Promedio del PRECIO UNITARIO
                             stats = df_f.groupby(col_prod)['Precio_Clean'].agg(['min', 'max', 'mean'])
-                            top_prods_names = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).index
-                            txt_precios_unitarios = stats.loc[top_prods_names].to_string()
+                            top_names = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).index
+                            txt_precios_unitarios = stats.loc[top_names].to_string()
 
-                        # TABLA DE DETALLE (OCs / IDs)
+                        # DETALLE OC
                         txt_ocs = ""
-                        keywords_detalle = ["oc", "orden", "codigo", "código", "detalle", "id", "fecha", "cuando"]
+                        keywords_detalle = ["oc", "orden", "codigo", "código", "detalle", "id", "fecha"]
                         if any(k in q.lower() for k in keywords_detalle) and col_id:
                             cols = [c for c in [col_fecha, col_id, col_prod, 'Monto_Clean'] if c]
                             if col_fecha: df_f = df_f.sort_values(col_fecha, ascending=False)
-                            # Pasamos los datos crudos para que la IA los formatee en Markdown
-                            txt_ocs = f"\n[TABLA DE DATOS PARA FORMATO MARKDOWN]\n{df_f[cols].head(10).to_string(index=False)}"
+                            # Pasamos datos crudos
+                            txt_ocs = f"\n[TABLA DETALLE OC (RAW)]\n{df_f[cols].head(10).to_string(index=False)}"
 
-                        contexto_data = f"""
-                        ENTIDAD: {nombre}
-                        TOTAL VENDIDO: ${total:,.0f}
-                        
-                        [PRECIOS UNITARIOS REALES (MIN/MAX)]
-                        {txt_precios_unitarios}
-                        
-                        [TOP PRODUCTOS POR VENTA]
-                        {prods}
-                        
-                        {txt_ocs}
-                        """
+                        contexto_data = f"ENTIDAD: {nombre}\nTOTAL: ${total:,.0f}\n[PRECIOS UNITARIOS MIN/MAX]\n{txt_precios_unitarios}\n[PRODUCTOS]\n{prods}\n{txt_ocs}"
                     else:
-                        # Si no hay entidad, pasamos contexto general para que no se quede mudo
-                        contexto_data = f"DATOS GENERALES DEL MERCADO:\nTop Productos:\n{df.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string() if col_prod else 'N/A'}"
+                        contexto_data = "NO HAY DATOS. LA ENTIDAD NO EXISTE EN LA BASE DE DATOS."
 
-                    # 3. GENERACIÓN LLM (CON INSTRUCCIONES DE FORMATO)
+                    # 3. LLM
                     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                     model = genai.GenerativeModel(next((m for m in models if 'flash' in m), models[0]))
                     
                     prompt = f"""
-                    ERES CORTEX ANALYTICS.
+                    ERES CORTEX.
                     ESTADO: {msg_sistema}
                     DATOS:
                     {contexto_data}
                     PREGUNTA: "{q}"
-                    
                     INSTRUCCIONES:
-                    1. Si el estado es ALERTA, di claramente que no encontraste la empresa.
-                    2. Si preguntan PRECIOS, usa EXCLUSIVAMENTE la tabla [PRECIOS UNITARIOS REALES]. Diferencia entre 'Precio Unitario' y 'Venta Total'.
-                    3. Si hay datos de Tabla OC, GENERA UNA TABLA MARKDOWN (| Fecha | ID | ... |) limpia y legible.
+                    1. Si el estado es ALERTA, di claramente que no está en la base.
+                    2. Si preguntan precios, usa la tabla [PRECIOS UNITARIOS].
+                    3. Si hay tabla OC, GENERA UNA TABLA MARKDOWN bonita.
                     """
                     
                     res = model.generate_content(prompt)
@@ -316,7 +302,7 @@ if uploaded_file:
 
                 except Exception as e:
                     if "429" in str(e):
-                         st.error("🚦 ¡Sobrecarga de Energía! Actualiza la API Key en secrets.toml para continuar.")
+                         st.error("🚦 ¡Sobrecarga de Energía! Actualiza la API Key en secrets.toml.")
                     else:
                         st.error(f"Error: {e}")
 
