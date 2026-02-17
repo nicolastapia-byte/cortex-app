@@ -44,19 +44,10 @@ with st.sidebar:
 
 # --- FUNCIONES ROBUSTAS ---
 def detectar_columna(df, posibles, excluir=[]):
-    """
-    Busca columnas priorizando el orden de 'posibles'.
-    'excluir': lista de palabras que SI están en la columna, la descartamos (ej: 'Rut' cuando buscamos Nombres).
-    """
     for p in posibles:
         for col in df.columns:
-            # 1. Chequeo de Exclusión (Anti-Rut)
-            if any(exc.lower() in col.lower() for exc in excluir):
-                continue
-            
-            # 2. Chequeo de Coincidencia
-            if p.lower() in col.lower() and df[col].notna().sum() > 0:
-                return col
+            if any(exc.lower() in col.lower() for exc in excluir): continue
+            if p.lower() in col.lower() and df[col].notna().sum() > 0: return col
     return None
 
 def limpiar_monto(serie):
@@ -82,9 +73,9 @@ def normalizar_region(nombre):
     if 'uble' in n: return "Ñuble"
     if 'biob' in n: return "Biobío"
     if 'araucan' in n: return "Araucanía"
-    if 'rios' in n or 'ríos' in n: return "Los Ríos"
+    if 'rios' in n: return "Los Ríos"
     if 'lagos' in n: return "Los Lagos"
-    if 'aysen' in n or 'aysén' in n: return "Aysén"
+    if 'aysen' in n: return "Aysén"
     if 'magallanes' in n: return "Magallanes"
     return "Otras"
 
@@ -94,55 +85,35 @@ uploaded_file = st.file_uploader("📂 Cargar Datos (Excel/CSV)", type=["xlsx", 
 
 if uploaded_file:
     try:
-        # 1. Carga
         if uploaded_file.name.endswith('.csv'):
             try: df = pd.read_csv(uploaded_file, encoding='utf-8')
             except: df = pd.read_csv(uploaded_file, encoding='latin-1')
         else:
             df = pd.read_excel(uploaded_file)
         
-        # 2. Detección Inteligente de Columnas
-        # Monto Total
+        # Detección
         col_monto = detectar_columna(df, ['TotalNeto', 'TotalLinea', 'Monto Total', 'Total'])
-        # Monto Unitario (Nuevo para archivo Precios)
         col_monto_uni = detectar_columna(df, ['Monto Unitario', 'Precio Unitario', 'PrecioNeto', 'Precio'])
-        
-        # Organismo
         col_org = detectar_columna(df, ['Nombre Organismo', 'NombreOrganismo', 'NombreUnidad', 'Unidad', 'Comprador'], excluir=['Rut'])
-        
-        # Region
         col_reg = detectar_columna(df, ['RegionUnidad', 'Region', 'RegionComprador'])
-        
-        # Producto
         col_prod = detectar_columna(df, ['Nombre Producto', 'Producto', 'NombreProducto', 'Descripcion'])
-        
-        # Proveedor (AQUÍ ESTABA EL ERROR: Excluimos 'Rut' para que no se confunda)
-        col_prov = detectar_columna(df, ['Nombre Proveedor', 'NombreProvider', 'Proveedor', 'Vendedor', 'Empresa'], excluir=['Rut', 'Codigo', 'ID'])
-        
-        # Cantidad
+        col_prov = detectar_columna(df, ['Nombre Proveedor', 'NombreProvider', 'Proveedor', 'Vendedor', 'Empresa'], excluir=['Rut', 'Codigo'])
         col_cant = detectar_columna(df, ['Cantidad Adjudicada', 'Cantidad', 'Cant'])
 
-        # 3. Lógica de Negocio: Cálculo de Monto Real
-        # Si no hay columna "Total", la creamos (Precio * Cantidad)
+        # Lógica de Montos
         if col_monto:
             df['Monto_Clean'] = limpiar_monto(df[col_monto])
         elif col_monto_uni and col_cant:
-            # Caso archivo Precios/Cotizaciones
             df['Monto_Clean'] = limpiar_monto(df[col_monto_uni]) * pd.to_numeric(df[col_cant], errors='coerce').fillna(1)
         elif col_monto_uni:
-            df['Monto_Clean'] = limpiar_monto(df[col_monto_uni]) # Mejor que nada
+            df['Monto_Clean'] = limpiar_monto(df[col_monto_uni])
         else:
             df['Monto_Clean'] = 0
             
-        # Para análisis de precios unitarios
-        if col_monto_uni:
-             df['Precio_Clean'] = limpiar_monto(df[col_monto_uni])
-        else:
-             df['Precio_Clean'] = 0
+        if col_monto_uni: df['Precio_Clean'] = limpiar_monto(df[col_monto_uni])
+        else: df['Precio_Clean'] = 0
 
         st.divider()
-        
-        # --- DASHBOARD ---
         
         # KPI 1
         k1, k2, k3, k4 = st.columns(4)
@@ -177,7 +148,6 @@ if uploaded_file:
                     x=alt.X('Monto_Clean', title='Monto ($)'), y=alt.Y(col_prov, sort='-x', title=''), color=alt.value('#4ECDC4'), tooltip=[col_prov, 'Monto_Clean']
                 ).properties(height=300)
                 st.altair_chart(ch_prov, use_container_width=True)
-            else: st.info("No se detectó Proveedor (Nombre).")
 
         st.markdown("---")
         
@@ -205,43 +175,68 @@ if uploaded_file:
                 ).properties(height=500)
                 st.altair_chart(ch_prod, use_container_width=True)
 
-        # --- IA OMNISCIENTE ---
+        # --- IA OMNISCIENTE V2 (BÚSQUEDA ACTIVA) ---
         st.divider()
         st.subheader("🤖 Cortex Strategic Advisor")
         
-        q = st.text_input("Consulta:", placeholder="Ej: ¿Qué proveedor gana más en Biobío? / Precio promedio del top producto", label_visibility="collapsed")
-        if st.button("⚡ ANALIZAR") and q:
-            with st.spinner("Analizando mercado..."):
+        q = st.text_input("Consulta:", placeholder="Ej: ¿Qué productos vende Skatemarket? / ¿Qué compra el Hospital X?", label_visibility="collapsed")
+        if st.button("⚡ INVESTIGAR") and q:
+            with st.spinner("Analizando base de datos completa..."):
                 try:
-                    # Contexto
+                    # 1. BÚSQUEDA DE ENTIDAD ESPECÍFICA (La Nueva Magia)
+                    txt_especifico = "No se detectó una entidad específica en la pregunta."
+                    entidad_encontrada = None
+                    
+                    # Buscamos coincidencias en Proveedores y Organismos
+                    if col_prov:
+                        for prov in df[col_prov].dropna().unique():
+                            if str(prov).lower() in q.lower():
+                                entidad_encontrada = prov
+                                filtro = df[df[col_prov] == prov]
+                                break
+                    if not entidad_encontrada and col_org:
+                        for org in df[col_org].dropna().unique():
+                            if str(org).lower() in q.lower():
+                                entidad_encontrada = org
+                                filtro = df[df[col_org] == org]
+                                break
+                    
+                    # Si encontramos a alguien, sacamos su ficha técnica
+                    if entidad_encontrada:
+                        total_entidad = filtro['Monto_Clean'].sum()
+                        if col_prod:
+                            prods_entidad = filtro.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).to_string()
+                        else:
+                            prods_entidad = "No hay detalle de productos."
+                        
+                        txt_especifico = f"""
+                        ✅ SE ENCONTRÓ LA ENTIDAD: '{entidad_encontrada}'
+                        - Total Transado: ${total_entidad:,.0f}
+                        - TOP PRODUCTOS DE ESTA ENTIDAD:
+                        {prods_entidad}
+                        """
+
+                    # 2. Contexto General (Lo de siempre)
                     txt_prod = df.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).to_string() if col_prod else ""
                     
-                    # Precios Unitarios (Solo si detectamos la columna de precio)
-                    txt_precios = "No disponible."
-                    if col_prod and col_monto_uni:
-                        # Usamos 'Precio_Clean' que limpiamos antes
-                        stats = df.groupby(col_prod)['Precio_Clean'].agg(['min', 'max', 'mean'])
-                        top_names = df.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).index
-                        txt_precios = stats.loc[top_names].to_string()
-
-                    # Cruce Regional
-                    txt_cruce = ""
-                    if 'Region_Norm' in df.columns and col_prod:
-                        try:
-                            aux = df.groupby(['Region_Norm', col_prod])['Monto_Clean'].sum().reset_index().sort_values(['Region_Norm', 'Monto_Clean'], ascending=[True, False])
-                            txt_cruce = aux.groupby('Region_Norm').head(2).to_string(index=False)
-                        except: pass
-
-                    # Modelo
                     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                     model = genai.GenerativeModel(next((m for m in models if 'flash' in m), models[0]))
                     
                     prompt = f"""
-                    ERES CORTEX, EXPERTO EN LICITACIONES.
-                    [TOP PRODUCTOS (POR MONTO TOTAL)] {txt_prod}
-                    [PRECIOS UNITARIOS REALES (MIN/MAX)] {txt_precios}
-                    [TOP PRODUCTOS POR REGIÓN] {txt_cruce}
+                    ERES CORTEX, EXPERTO EN DATOS.
+                    
+                    [BÚSQUEDA ESPECÍFICA POR USUARIO]
+                    {txt_especifico}
+                    
+                    [CONTEXTO GENERAL DEL MERCADO]
+                    Top Productos Globales: {txt_prod}
+                    
                     PREGUNTA: "{q}"
+                    
+                    INSTRUCCIONES:
+                    1. Si encontraste una entidad específica (sección ✅), responde con ESOS datos. Di "Analizando a [Nombre]...".
+                    2. Si no, responde con los datos generales.
+                    3. Detalla qué productos mueven, montos y sugerencias.
                     """
                     res = model.generate_content(prompt)
                     st.markdown(f'<div class="chat-box">{res.text}</div>', unsafe_allow_html=True)
