@@ -8,19 +8,17 @@ import io
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Sentinela - Analítica Comercial", page_icon="📊", layout="wide")
 
-# --- CSS PRO (T-9000 STYLE) ---
+# --- CSS PRO ---
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FAFAFA; }
     h1 { color: #4A90E2; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
     div[data-testid="stMetricValue"] { font-size: 24px !important; color: #00D4FF; font-weight: bold; }
     
-    /* ANIMACIÓN ROBOT */
     .robot-container { display: flex; justify-content: center; animation: float-breathe 4s infinite; padding-bottom: 20px; }
     .robot-img { width: 100px; filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.6)); }
     @keyframes float-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
     
-    /* MENSAJES */
     .chat-box { background-color: #1E2329; padding: 20px; border-radius: 10px; border-left: 5px solid #00D4FF; margin-top: 15px; color: #E0E0E0; }
     .user-msg { text-align: right; color: #A0A0A0; font-style: italic; margin-bottom: 5px; }
     .bot-msg { text-align: left; color: #E0E0E0; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
@@ -29,20 +27,30 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- SIDEBAR ---
+# --- SIDEBAR (SEGURA) ---
 with st.sidebar:
     st.markdown("""<div class="robot-container"><img src="https://cdn-icons-png.flaticon.com/512/4712/4712035.png" class="robot-img"></div>""", unsafe_allow_html=True)
     st.title("Cortex Analytics")
     st.info("Sube tu histórico (OC, Licitaciones o Cotizaciones).")
+    
+    st.markdown("---")
+    
+    # CONEXIÓN SEGURA A SECRETOS
+    if "GOOGLE_API_KEY" in st.secrets:
+        try:
+            genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+            st.success("✅ Sistema Conectado")
+        except Exception as e:
+            st.error(f"Error de Llave: {e}")
+    else:
+        st.error("⚠️ Falta configurar GOOGLE_API_KEY en secrets.toml")
+        st.stop()
+
+    st.markdown("---")
     if st.button("🗑️ Reiniciar Memoria"):
         st.session_state.history = []
         st.session_state.entidad_activa = None
         st.rerun()
-    if "GOOGLE_API_KEY" in st.secrets:
-        genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-    else:
-        st.error("⚠️ Falta API Key.")
-        st.stop()
 
 # --- MEMORIA ---
 if "history" not in st.session_state: st.session_state.history = []
@@ -117,6 +125,7 @@ uploaded_file = st.file_uploader("📂 Cargar Datos (Excel/CSV)", type=["xlsx", 
 
 if uploaded_file:
     try:
+        # CARGA
         if uploaded_file.name.endswith('.csv'):
             try: df = pd.read_csv(uploaded_file, encoding='utf-8')
             except: df = pd.read_csv(uploaded_file, encoding='latin-1')
@@ -192,9 +201,9 @@ if uploaded_file:
                     x=alt.X('Monto_Clean', title='Monto ($)'), y=alt.Y(col_prod, sort='-x', title=''), color=alt.value('#4A90E2'), tooltip=[col_prod, 'Monto_Clean']
                 ).properties(height=500), use_container_width=True)
 
-        # --- CORTEX CHAT (MODO POWER) ---
+        # --- CORTEX CHAT ---
         st.divider()
-        st.subheader("🤖 Cortex Strategic Advisor (Power Edition)")
+        st.subheader("🤖 Cortex Strategic Advisor")
         
         for msg in st.session_state.history:
             role = "user-msg" if msg["role"] == "user" else "bot-msg"
@@ -206,7 +215,7 @@ if uploaded_file:
         if st.button("⚡ ANALIZAR") and q:
             st.session_state.history.append({"role": "user", "content": q})
             
-            with st.spinner("Cortex High-Performance procesando..."):
+            with st.spinner("Procesando..."):
                 try:
                     # 1. BÚSQUEDA
                     nuevo_nombre, nueva_col = buscar_entidad_avanzada(df, col_prov, col_org, q)
@@ -248,8 +257,7 @@ if uploaded_file:
                     else:
                         contexto_data = "NO HAY DATOS. LA ENTIDAD NO EXISTE."
 
-                    # 3. LLM (SELECTOR POWER)
-                    # Mantenemos la lógica original que selecciona el mejor modelo disponible (usualmente el Flash nuevo)
+                    # 3. LLM
                     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                     model = genai.GenerativeModel(next((m for m in models if 'flash' in m), models[0]))
                     
@@ -262,7 +270,7 @@ if uploaded_file:
                     INSTRUCCIONES:
                     1. Si preguntan PRECIOS, usa la tabla [PRECIOS UNITARIOS].
                     2. Si preguntan VENTAS, usa el TOTAL.
-                    3. Sé breve y directo.
+                    3. Si hay tabla OC, muéstrala.
                     """
                     
                     res = model.generate_content(prompt)
@@ -270,9 +278,8 @@ if uploaded_file:
                     st.rerun()
 
                 except Exception as e:
-                    # GESTIÓN DE ENERGÍA (429)
                     if "429" in str(e):
-                        st.warning("⚠️ **NIVEL DE ENERGÍA CRÍTICO:** Has agotado las consultas de alta potencia de hoy. El T-9000 entrará en modo de recarga hasta mañana. ¡Gran trabajo hoy, Partner!")
+                         st.error("🚦 **ALERTA DE ENERGÍA:** Se agotó la cuota de la llave actual. Por favor, actualiza la 'GOOGLE_API_KEY' en tu archivo de secretos (secrets.toml) para recargar el sistema.")
                     else:
                         st.error(f"Error: {e}")
 
