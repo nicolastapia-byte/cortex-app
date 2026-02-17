@@ -2,13 +2,13 @@ import streamlit as st
 import google.generativeai as genai
 import pandas as pd
 import altair as alt
-import difflib # 🧠 CEREBRO FUZZY
+import difflib 
 import io
 
 # --- 1. CONFIGURACIÓN ---
 st.set_page_config(page_title="Sentinela - Analítica Comercial", page_icon="📊", layout="wide")
 
-# --- CSS PRO (ESTILO T-9000) ---
+# --- CSS PRO ---
 st.markdown("""
     <style>
     .stApp { background-color: #0E1117; color: #FAFAFA; }
@@ -49,15 +49,13 @@ with st.sidebar:
 if "history" not in st.session_state: st.session_state.history = []
 if "entidad_activa" not in st.session_state: st.session_state.entidad_activa = None
 
-# --- FUNCIONES DE INTELIGENCIA (V18) ---
+# --- FUNCIONES DE INTELIGENCIA ---
 def normalizar_agresivo(texto):
-    """Elimina ruido para comparar 'Wall Ride' con 'wallride'."""
     if not isinstance(texto, str): return ""
     return texto.lower().replace(" ", "").replace(".", "").replace(",", "").replace("-", "")
 
 def buscar_entidad_avanzada(df, col_prov, col_org, query):
-    """Motor de Búsqueda Fuzzy + Normalizado."""
-    stop_words = ["que", "quien", "dame", "el", "la", "detalle", "oc", "orden", "compra", "producto", "vende", "de", "lo", "los", "las", "dime", "codigo"]
+    stop_words = ["que", "quien", "dame", "el", "la", "detalle", "oc", "orden", "compra", "producto", "vende", "de", "lo", "los", "las", "dime", "codigo", "precio", "cuanto", "valor"]
     keywords = [w for w in query.split() if w.lower() not in stop_words and len(w) > 2]
     
     if not keywords: return None, None
@@ -65,22 +63,21 @@ def buscar_entidad_avanzada(df, col_prov, col_org, query):
     query_clean = normalizar_agresivo("".join(keywords))
     posibles_cols = [c for c in [col_prov, col_org] if c]
     
-    # 1. BARRIDO EXACTO/NORMALIZADO
+    # 1. Exacto
     for col in posibles_cols:
         lista_nombres = df[col].dropna().unique()
         for nombre_real in lista_nombres:
             if query_clean in normalizar_agresivo(str(nombre_real)): return nombre_real, col
 
-    # 2. BÚSQUEDA DIFUSA (FUZZY)
+    # 2. Fuzzy
     for col in posibles_cols:
         lista_nombres = [str(x) for x in df[col].dropna().unique()]
         for k in keywords:
-            matches = difflib.get_close_matches(k, lista_nombres, n=1, cutoff=0.65) # Umbral de tolerancia
+            matches = difflib.get_close_matches(k, lista_nombres, n=1, cutoff=0.6)
             if matches: return matches[0], col
                 
     return None, None
 
-# --- FUNCIONES DE DATOS ---
 def detectar_columna(df, posibles, excluir=[]):
     for p in posibles:
         for col in df.columns:
@@ -92,7 +89,7 @@ def limpiar_monto(serie):
     if serie.dtype == object: return serie.astype(str).str.replace(r'[$.]', '', regex=True).astype(float)
     return serie
 
-# --- GEO CONFIG (V15) ---
+# Geo
 ORDEN_CHILE = ["Arica y Parinacota", "Tarapacá", "Antofagasta", "Atacama", "Coquimbo", "Valparaíso", "Metropolitana", "O'Higgins", "Maule", "Ñuble", "Biobío", "Araucanía", "Los Ríos", "Los Lagos", "Aysén", "Magallanes", "Sin Región"]
 def normalizar_region(nombre):
     if not isinstance(nombre, str): return "Sin Región"
@@ -127,7 +124,7 @@ if uploaded_file:
             except: df = pd.read_csv(uploaded_file, encoding='latin-1')
         else: df = pd.read_excel(uploaded_file)
         
-        # DETECCIÓN INTELIGENTE
+        # DETECCIÓN
         col_monto = detectar_columna(df, ['TotalNeto', 'TotalLinea', 'Monto Total', 'Total'])
         col_monto_uni = detectar_columna(df, ['Monto Unitario', 'Precio Unitario', 'PrecioNeto', 'Precio'])
         col_org = detectar_columna(df, ['Nombre Organismo', 'NombreOrganismo', 'NombreUnidad', 'Unidad'], excluir=['Rut'])
@@ -138,11 +135,15 @@ if uploaded_file:
         col_id = detectar_columna(df, ['CodigoExterno', 'Codigo Licitación', 'Orden de Compra', 'Codigo', 'ID', 'OC'])
         col_fecha = detectar_columna(df, ['Fecha Adjudicación', 'FechaCreacion', 'Fecha'])
 
-        # LIMPIEZA DE MONTOS
+        # LIMPIEZA DATOS
         if col_monto: df['Monto_Clean'] = limpiar_monto(df[col_monto])
         elif col_monto_uni and col_cant: df['Monto_Clean'] = limpiar_monto(df[col_monto_uni]) * pd.to_numeric(df[col_cant], errors='coerce').fillna(1)
         elif col_monto_uni: df['Monto_Clean'] = limpiar_monto(df[col_monto_uni])
         else: df['Monto_Clean'] = 0
+            
+        # Limpieza Precio Unitario (Vital para el análisis de precios)
+        if col_monto_uni: df['Precio_Clean'] = limpiar_monto(df[col_monto_uni])
+        else: df['Precio_Clean'] = 0
             
         st.divider()
         
@@ -155,7 +156,7 @@ if uploaded_file:
         k4.metric("🏆 Líder", f"{str(top_lider)[:15]}..")
         st.markdown("---")
 
-        # --- SECCIÓN 2: GRÁFICOS NIVEL 1 (Compradores vs Competencia) ---
+        # --- SECCIÓN 2: GRÁFICOS ---
         c1, c2 = st.columns(2)
         with c1:
             st.subheader("🏛️ Top Compradores")
@@ -174,17 +175,13 @@ if uploaded_file:
 
         st.markdown("---")
         
-        # --- SECCIÓN 3: GRÁFICOS NIVEL 2 (Mapas y Productos) ---
+        # --- SECCIÓN 3: MAPA Y PRODUCTOS ---
         c3, c4 = st.columns([1, 1])
-        
         with c3:
             st.subheader("📍 Distribución Geográfica (Norte a Sur)")
             if col_reg:
-                # Normalización para el gráfico Lollipop
                 df['Region_Norm'] = df[col_reg].apply(normalizar_region)
                 d_geo = df.groupby('Region_Norm')['Monto_Clean'].sum().reset_index()
-                
-                # Gráfico Lollipop (El Esqueleto)
                 base = alt.Chart(d_geo).encode(y=alt.Y('Region_Norm', sort=ORDEN_CHILE, title=None), x=alt.X('Monto_Clean', title='Monto ($)'), tooltip=['Region_Norm', 'Monto_Clean'])
                 rule = base.mark_rule(color="#525252", opacity=0.6)
                 circle = base.mark_circle(size=200, opacity=1).encode(color=alt.Color('Monto_Clean', scale=alt.Scale(scheme='turbo'), legend=None), size=alt.Size('Monto_Clean', legend=None, scale=alt.Scale(range=[100, 1000])))
@@ -199,40 +196,36 @@ if uploaded_file:
                 st.altair_chart(alt.Chart(d_prod).mark_bar(cornerRadius=5).encode(
                     x=alt.X('Monto_Clean', title='Monto ($)'), y=alt.Y(col_prod, sort='-x', title=''), color=alt.value('#4A90E2'), tooltip=[col_prod, 'Monto_Clean']
                 ).properties(height=500), use_container_width=True)
-            else: st.info("No se detectó columna de Producto.")
 
-        # --- SECCIÓN 4: CORTEX CHAT (CEREBRO V18 + MEMORIA) ---
+        # --- SECCIÓN 4: CORTEX CHAT ---
         st.divider()
         st.subheader("🤖 Cortex Strategic Advisor")
         
-        # Historial
         for msg in st.session_state.history:
             role = "user-msg" if msg["role"] == "user" else "bot-msg"
             icon = "👤" if msg["role"] == "user" else "🤖"
             st.markdown(f'<div class="{role}">{icon} {msg["content"]}</div>', unsafe_allow_html=True)
 
-        q = st.text_input("Consulta:", placeholder="Ej: ¿Qué vende Wall Ride? ... luego ... ¿Dame los códigos de OC?", label_visibility="collapsed")
+        q = st.text_input("Consulta:", placeholder="Ej: ¿Qué vende Wall Ride? ... ¿Precio mínimo?", label_visibility="collapsed")
         
         if st.button("⚡ ANALIZAR") and q:
             st.session_state.history.append({"role": "user", "content": q})
             
-            with st.spinner("Cortex procesando..."):
+            with st.spinner("Calculando precios unitarios y buscando datos..."):
                 try:
-                    # 1. BÚSQUEDA AVANZADA (FUZZY)
+                    # 1. BÚSQUEDA
                     nuevo_nombre, nueva_col = buscar_entidad_avanzada(df, col_prov, col_org, q)
                     
                     if nuevo_nombre:
                         st.session_state.entidad_activa = {"nombre": nuevo_nombre, "columna": nueva_col}
                         msg_sistema = f"✅ ENTIDAD DETECTADA: '{nuevo_nombre}'."
                     elif st.session_state.entidad_activa:
-                        # Si no hay match nuevo, pero hay memoria, verificamos si la intención es cambiar
-                        # Simple heurística: Si la frase es corta y parece nombre, intentamos buscar de nuevo o alertar
                         msg_sistema = f"MANTENIENDO FOCO: '{st.session_state.entidad_activa['nombre']}'."
                     else:
-                        msg_sistema = "⚠️ ALERTA: No se encontró la entidad en la base de datos."
+                        msg_sistema = "⚠️ ALERTA: No se encontró la entidad."
                         st.session_state.entidad_activa = None
 
-                    # 2. EXTRACCIÓN DE DATOS
+                    # 2. DATOS
                     contexto_data = ""
                     if st.session_state.entidad_activa:
                         nombre = st.session_state.entidad_activa["nombre"]
@@ -240,38 +233,60 @@ if uploaded_file:
                         df_f = df[df[col] == nombre].copy()
                         total = df_f['Monto_Clean'].sum()
                         
+                        # Productos y Montos Totales
                         prods = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).to_string() if col_prod else "N/A"
                         
-                        # Tabla de Detalles (OCs)
+                        # --- SNIPER DE PRECIOS UNITARIOS (LA SOLUCIÓN) ---
+                        txt_precios_unitarios = "No disponible (Falta columna de precio unitario)."
+                        if col_monto_uni:
+                            # Agrupamos por producto y calculamos MIN, MAX y PROMEDIO del PRECIO UNITARIO
+                            stats = df_f.groupby(col_prod)['Precio_Clean'].agg(['min', 'max', 'mean', 'count'])
+                            # Filtramos los Top 10 por relevancia
+                            top_prods_names = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).index
+                            txt_precios_unitarios = stats.loc[top_prods_names].to_string()
+
+                        # Detalle OCs
                         txt_ocs = ""
                         keywords_detalle = ["oc", "orden", "codigo", "código", "detalle", "id", "fecha"]
                         if any(k in q.lower() for k in keywords_detalle) and col_id:
                             cols = [c for c in [col_fecha, col_id, col_prod, 'Monto_Clean'] if c]
-                            if col_fecha: 
-                                try: df_f = df_f.sort_values(col_fecha, ascending=False)
-                                except: pass
-                            txt_ocs = f"\n[TABLA DE DETALLE - ÚLTIMAS 10 COMPRAS]\n{df_f[cols].head(10).to_string(index=False)}"
+                            if col_fecha: df_f = df_f.sort_values(col_fecha, ascending=False)
+                            txt_ocs = f"\n[TABLA DETALLE OC]\n{df_f[cols].head(10).to_string(index=False)}"
 
-                        contexto_data = f"ENTIDAD: {nombre}\nTOTAL: ${total:,.0f}\nTOP PRODUCTOS:\n{prods}\n{txt_ocs}"
+                        contexto_data = f"""
+                        ENTIDAD: {nombre}
+                        TOTAL VENDIDO: ${total:,.0f}
+                        
+                        [ANÁLISIS DE PRECIOS UNITARIOS - MIN/MAX]
+                        (Usa esta tabla para responder preguntas sobre 'precios', 'cuánto vale', 'barato/caro')
+                        {txt_precios_unitarios}
+                        
+                        [TOP PRODUCTOS POR VENTA TOTAL]
+                        {prods}
+                        
+                        {txt_ocs}
+                        """
                     else:
-                        # Si falló la búsqueda, no pasamos datos para evitar alucinaciones
-                        contexto_data = "NO HAY DATOS. INFORMA QUE NO SE ENCONTRÓ LA EMPRESA/ORGANISMO."
+                        contexto_data = "NO HAY DATOS. LA ENTIDAD NO EXISTE."
 
-                    # 3. GENERACIÓN RESPUESTA
+                    # 3. LLM
                     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                     model = genai.GenerativeModel(next((m for m in models if 'flash' in m), models[0]))
                     
                     prompt = f"""
                     ERES CORTEX.
                     ESTADO: {msg_sistema}
-                    DATOS:
+                    
+                    DATOS ANALIZADOS:
                     {contexto_data}
+                    
                     PREGUNTA: "{q}"
                     
-                    INSTRUCCIONES:
-                    1. Si el estado es ALERTA, di que no encontraste la empresa (sé honesto).
-                    2. Si hay datos, responde directo y ejecutivo.
-                    3. Si hay tabla de OC, preséntala limpia.
+                    INSTRUCCIONES CLAVE:
+                    1. Si preguntan PRECIOS (mínimo, máximo, unitario), MIRA LA TABLA [ANÁLISIS DE PRECIOS UNITARIOS]. 
+                       No confundas con 'Monto Total'. Di: "El precio mínimo detectado fue $X y el máximo $Y".
+                    2. Si preguntan VENTAS, usa el TOTAL.
+                    3. Si hay tabla de OCs, muéstrala.
                     """
                     
                     res = model.generate_content(prompt)
