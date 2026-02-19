@@ -38,11 +38,10 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # ==========================================
-# 3. MOTOR DE RUTEO
+# 3. MOTOR DE RUTEO INTELIGENTE
 # ==========================================
 def detectar_tipo_reporte(columnas):
     cols_str = " ".join(columnas).lower()
-    # Detección estricta por columnas clave únicas de cada portal
     if "estado compra ágil" in cols_str or "estado compra agil" in cols_str:
         return "Compras Ágiles"
     elif "estado licitación" in cols_str or "estado licitacion" in cols_str:
@@ -99,7 +98,6 @@ if uploaded_file:
 
     # --- RADAR DE UNICORNIOS (MONOPOLIOS) "OJO DE DIOS" ---
     st.subheader("🎯 Radar de Oportunidades: Océanos Azules")
-    st.info("💡 **Inteligencia de Mercado:** Cortex escanea buscando negocios donde la competencia es mínima o nula (Monopolios).")
     
     col_id = next((c for c in df.columns if c.lower() in ['codigoexterno', 'id licitacion', 'orden de compra', 'id producto']), None)
     col_prov = next((c for c in df.columns if c.lower() in ['nombre proveedor', 'proveedor', 'empresa', 'rut proveedor']), None)
@@ -141,7 +139,6 @@ if uploaded_file:
     # ==========================================
     st.subheader(f"💬 Consultor Estratégico Cortex")
     
-    # 💡 LAS 20 PREGUNTAS MAESTRAS EN LA INTERFAZ
     with st.expander("📖 Catálogo de Prompts Comerciales (Copia y pega la pregunta que necesites)"):
         col_a, col_b = st.columns(2)
         with col_a:
@@ -174,7 +171,6 @@ if uploaded_file:
             st.markdown('<div class="prompt-box">Crea un resumen estadístico general de todos los datos.</div>', unsafe_allow_html=True)
             st.markdown('<div class="prompt-box">Genera un informe detallando las oportunidades de negocio en este archivo.</div>', unsafe_allow_html=True)
 
-    # Mostrar historial de chat
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
@@ -186,28 +182,57 @@ if uploaded_file:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Cortex calculando métricas comerciales..."):
+            with st.spinner(f"Cortex aplicando modelo '{tipo_reporte}'..."):
                 
                 columnas_disponibles = df.columns.tolist()
                 
-                # --- EL CEREBRO PRE-ENTRENADO ---
+                # ========================================================
+                # 🧠 ENTRENAMIENTO ESPECÍFICO POR TIPO DE REPORTE (LA MAGIA)
+                # ========================================================
+                entrenamiento_especifico = ""
+                
+                if tipo_reporte == "Licitaciones":
+                    entrenamiento_especifico = """
+                    ESTÁS ANALIZANDO: LICITACIONES PÚBLICAS.
+                    - La empresa competidora está en 'Nombre Proveedor'.
+                    - El comprador está en 'Nombre Organismo'.
+                    - Para VOLUMEN DE DINERO o MARKET SHARE: Usa SIEMPRE la columna calculada 'Monto_Total_Estimado'.
+                    - Para detalle de PRODUCTOS: DEBES incluir en tus tablas ambas columnas: 'Nombre Producto' y 'Descripcion Producto' para que el usuario sepa exactamente qué se vendió.
+                    - Las fechas están en 'Fecha_Datetime'.
+                    """
+                elif tipo_reporte == "Compras Ágiles":
+                    entrenamiento_especifico = """
+                    ESTÁS ANALIZANDO: COMPRAS ÁGILES (Micromercado).
+                    - La empresa competidora está en 'Nombre Proveedor'.
+                    - El comprador está en 'Nombre Organismo'.
+                    - Para VOLUMEN DE DINERO o MARKET SHARE: Usa SIEMPRE la columna calculada 'Monto_Total_Estimado'.
+                    - Para detalle de PRODUCTOS: DEBES incluir en tus tablas ambas columnas: 'Nombre Producto' y 'Descripcion Producto' para ver la especificación técnica.
+                    - Las fechas están en 'Fecha_Datetime'.
+                    """
+                elif tipo_reporte == "Convenio Marco":
+                    entrenamiento_especifico = """
+                    ESTÁS ANALIZANDO: CONVENIO MARCO (Catálogo).
+                    - La empresa competidora está en 'Empresa'.
+                    - La zona geográfica es 'Región'.
+                    - Para PRECIOS y MARKET SHARE: Aquí no hay Monto_Total_Estimado. Usa 'Precio Oferta'.
+                    - Para detalle de PRODUCTOS: Usa 'Nombre Producto' y 'Formato' (No existe Descripcion Producto).
+                    - Las fechas están en 'Fecha_Datetime'.
+                    """
+                else:
+                    entrenamiento_especifico = "Usa las columnas disponibles para deducir la mejor respuesta."
+
                 system_instruction = f"""
                 Eres Cortex, Director Comercial de SmartOffer.
-                Columnas exactas disponibles en 'df': {columnas_disponibles}
+                Columnas exactas en 'df': {columnas_disponibles}
+                
+                {entrenamiento_especifico}
 
                 REGLAS CRÍTICAS DE PROGRAMACIÓN:
-                1. SOLO usa las columnas de la lista. Si necesitas un Proveedor, usa 'Nombre Proveedor', 'Empresa', etc. Si necesitas ID usa 'CodigoExterno' o 'ID Producto'.
+                1. SOLO usa las columnas de la lista. Nunca asumas nombres.
                 2. Devuelve SOLO código Python puro. SIN markdown (sin ```python).
                 3. SIEMPRE asigna el resultado a la variable 'resultado'.
-                4. Si falta una columna para el cálculo, asigna a 'resultado' un string indicando qué falta amigablemente.
-
-                RECETARIO DE ENTRENAMIENTO COMERCIAL:
-                - "Market Share" / "Dinero por Proveedor": Agrupa por columna de Proveedor. Suma 'Monto_Total_Estimado' (si existe) o 'Precio Oferta'. Ordena descendente. Si piden informe, redacta texto Markdown con Top 3 y porcentajes.
-                - "Mayores compradores / Regiones": Agrupa por la columna de Organismo/Región. Suma el monto o cuenta la cantidad.
-                - "Tendencias de precios / fechas": Usa la columna de Fechas ('Fecha_Datetime' o la que tenga fechas). Agrupa por fecha y calcula la media (mean) de precios o sum de montos.
-                - "Productos rentables": Agrupa por la columna de Producto. Suma los montos o cantidades.
-                - "Ticket promedio": Calcula el mean() de 'Monto_Total_Estimado' o de los precios.
-                - "Informes": Haz cálculos con pandas y usa f-strings para armar un texto ejecutivo en Markdown para 'resultado'.
+                4. Si el usuario pide un "Informe" o "Resumen", haz los cálculos con pandas, y guarda en 'resultado' un string con el formato Markdown. Si pide tabla/gráfico, guarda en 'resultado' un DataFrame.
+                5. Maneja los valores nulos (fillna) antes de sumar o calcular medias.
                 """
                 
                 try:
@@ -243,7 +268,8 @@ if uploaded_file:
                     st.session_state.messages.append({"role": "assistant", "content": "Análisis estratégico completado."})
                 
                 except Exception as e:
-                    st.error("⚠️ Cortex no pudo procesar esta consulta específica. Verifica que el archivo subido contenga las columnas necesarias para responder la pregunta.")
+                    st.error("⚠️ Cortex no pudo procesar esta consulta. Esto suele ocurrir si el prompt pide analizar una columna que no está presente en tu archivo actual.")
+                    # print(f"Traza: {traceback.format_exc()}") # Puedes descomentar para debugear
 
 else:
     st.info("👋 Sube tu archivo Excel/CSV para activar el motor de inteligencia de negocios.")
