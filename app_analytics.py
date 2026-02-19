@@ -253,23 +253,24 @@ if uploaded_file:
                 Columnas adicionales para detalle de producto: {cols_detalle_prod}
 
                 REGLAS CRÍTICAS DE PROGRAMACIÓN (SI VIOLAS ESTO, EL SISTEMA FALLA):
-                1. EL ÚNICO DATAFRAME SE LLAMA `df`: ¡PROHIBIDO usar las palabras `data`, `dataset` o similares! SIEMPRE usa `df`. 
+                1. EL ÚNICO DATAFRAME SE LLAMA `df`: ¡PROHIBIDO usar las palabras `data`, `dataset` o similares!
                 2. CÓDIGO LINEAL DIRECTO: ESTÁ ESTRICTAMENTE PROHIBIDO usar funciones (NO USES `def`). 
                 3. DECLARACIÓN GLOBAL: La variable `resultado` debe declararse en el ámbito global.
                 4. USO ESTRICTO DEL MAPA: Si necesitas el monto, asume que es `col_map_final['MONTO_REAL']`. Proveedor es `col_map_final['PROVEEDOR_CLAVE']`. Comprador es `col_map_final['COMPRADOR_CLAVE']`. ID es `col_map_final['ID_CLAVE']`.
                 5. Devuelve SOLO código Python puro. SIN markdown (sin ```python).
                 6. Maneja Nulos: Usa `.fillna(0)` antes de agrupar o sumar.
-                7. FORMATO VISUAL OBLIGATORIO: Siempre que uses `.groupby()`, DEBES usar `.reset_index()` al final.
-                8. ANTI-ALUCINACIONES: ¡PROHIBIDO inventar nombres! Extrae todo matemáticamente de `df`.
-                9. PROHIBIDO usar `df.to_markdown()`. Asigna el DataFrame directo a la variable `resultado`.
+                7. CERO TEXTO EN DETALLES: Si la pregunta dice "Dime el detalle...", TIENES ESTRICTAMENTE PROHIBIDO generar texto, f-strings o explicaciones. Tu único trabajo es calcular la tabla y asignar ese DataFrame directamente a la variable `resultado` (ej: `resultado = df_filtrado[cols]`).
+                8. FORMATO VISUAL OBLIGATORIO: Siempre que uses `.groupby()`, DEBES usar `.reset_index()` al final.
                 
                 RECETARIO DE INTELIGENCIA COMERCIAL (SÍGUELO AL PIE DE LA LETRA):
-                - Si preguntan "¿Cuántas compras/licitaciones únicas hay por cada comprador?": Agrupa por `col_map_final['COMPRADOR_CLAVE']`. Usa `.agg()` para calcular 'nunique' y 'unique' sobre `col_map_final['ID_CLAVE']`. Aplica `.reset_index()`.
                 - Si preguntan "Dime el detalle de compras del organismo que más gasta": 
-                  Paso 1: Calcula el organismo top: `top_org = df.groupby(col_map_final['COMPRADOR_CLAVE'])[col_map_final['MONTO_REAL']].sum().idxmax()`
-                  Paso 2: Filtra el dataframe: `df_filtrado = df[df[col_map_final['COMPRADOR_CLAVE']] == top_org]`
-                  Paso 3: Selecciona las columnas clave: `cols = [col_map_final['ID_CLAVE'], col_map_final['COMPRADOR_CLAVE'], col_map_final['PROVEEDOR_CLAVE'], col_map_final['MONTO_REAL']] + [c for c in cols_detalle_prod if c in df.columns]`
-                  Paso 4: Asigna a resultado: `resultado = df_filtrado[cols]` (NUNCA mezcles esto con texto, solo entrega la tabla pura).
+                  Paso 1: Encuentra el top: `top_org = df.groupby(col_map_final['COMPRADOR_CLAVE'])[col_map_final['MONTO_REAL']].sum().idxmax()`
+                  Paso 2: Filtra: `df_filt = df[df[col_map_final['COMPRADOR_CLAVE']] == top_org]`
+                  Paso 3: Define columnas: `cols = [c for c in [col_map_final['ID_CLAVE'], col_map_final['COMPRADOR_CLAVE'], col_map_final['PROVEEDOR_CLAVE'], col_map_final['MONTO_REAL']] + cols_detalle_prod if c in df.columns]`
+                  Paso 4: Asigna: `resultado = df_filt[cols].drop_duplicates()`
+                
+                - Si preguntan "¿Cuántas compras/licitaciones únicas hay por cada comprador?":
+                  Agrupa por comprador, usa `.agg()` para sacar 'nunique' y 'unique' sobre el ID. Y aplica `.reset_index()`. No uses texto.
                 """
                 
                 clean_code = "No se pudo generar código. Posible error de conexión con la IA o límite de API."
@@ -291,13 +292,16 @@ if uploaded_file:
                     if isinstance(resultado, str):
                         st.markdown(resultado) 
                     elif isinstance(resultado, (pd.Series, pd.DataFrame)):
-                        st.write(resultado) 
+                        # Renderizado nativo de Streamlit super limpio para tablas
+                        st.dataframe(resultado, use_container_width=True) 
                         prompt_lower = prompt.lower()
                         try: 
                             if any(word in prompt_lower for word in ["tendencia", "evolución", "fecha", "tiempo"]):
                                 st.line_chart(resultado)
                             elif any(word in prompt_lower for word in ["top", "market", "ranking", "compradores", "proveedores"]):
-                                st.bar_chart(resultado)
+                                # Ciertas tablas complejas no se deben graficar a menos que sea un top simple
+                                if len(resultado.columns) <= 2:
+                                    st.bar_chart(resultado.set_index(resultado.columns[0]))
                         except:
                             pass 
                     else:
