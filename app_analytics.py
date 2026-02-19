@@ -147,6 +147,14 @@ if uploaded_file:
             cols_detalle_prod = ['Nombre Producto', 'Formato']
         
         col_map_final = {k: v for k, v in col_map.items() if v in df.columns}
+
+        # --- VARIABLES CORTAS Y GLOBALES (ANTI-DISLEXIA IA) ---
+        MONT_COL = col_map_final.get('MONTO_REAL')
+        PROV_COL = col_map_final.get('PROVEEDOR_CLAVE')
+        COMP_COL = col_map_final.get('COMPRADOR_CLAVE')
+        ID_COL = col_map_final.get('ID_CLAVE')
+        FECHA_COL = col_map_final.get('FECHA_CLAVE')
+        COLS_PROD = [c for c in cols_detalle_prod if c in df.columns]
     
     st.success(f"✅ Archivo blindado y listo. **{len(df):,} registros procesados.**")
     st.markdown("---")
@@ -157,13 +165,10 @@ if uploaded_file:
     st.subheader("🎯 Radar de Oportunidades: Océanos Azules")
     st.info("💡 **Inteligencia de Mercado:** Cortex escanea buscando negocios donde la competencia es mínima o nula (Monopolios).")
     
-    col_id = col_map_final.get('ID_CLAVE')
-    col_prov = col_map_final.get('PROVEEDOR_CLAVE')
-    
-    if col_id and col_prov:
-        competencia = df.groupby(col_id)[col_prov].nunique().reset_index()
-        competencia.columns = [col_id, 'Num_Competidores']
-        df_unicos = df.drop_duplicates(subset=[col_id]).merge(competencia, on=col_id)
+    if ID_COL and PROV_COL:
+        competencia = df.groupby(ID_COL)[PROV_COL].nunique().reset_index()
+        competencia.columns = [ID_COL, 'Num_Competidores']
+        df_unicos = df.drop_duplicates(subset=[ID_COL]).merge(competencia, on=ID_COL)
         
         unicornios_df = df_unicos[df_unicos['Num_Competidores'] == 1]
         baja_comp_df = df_unicos[df_unicos['Num_Competidores'] == 2]
@@ -175,18 +180,15 @@ if uploaded_file:
         
         if not unicornios_df.empty:
             st.markdown(f"#### 🔍 Detalle de {etiqueta_negocio} Unicornio")
-            col_monto = col_map_final.get('MONTO_REAL')
-            col_org = col_map_final.get('COMPRADOR_CLAVE')
+            col_prod_base = COLS_PROD[0] if len(COLS_PROD) > 0 else None
+            col_prod_desc = COLS_PROD[1] if len(COLS_PROD) > 1 else None
             
-            col_prod_base = cols_detalle_prod[0] if len(cols_detalle_prod) > 0 else None
-            col_prod_desc = cols_detalle_prod[1] if len(cols_detalle_prod) > 1 else None
-            
-            cols_to_show = [c for c in [col_id, col_org, col_prod_base, col_prod_desc, col_prov, col_monto] if c is not None and c in df.columns]
+            cols_to_show = [c for c in [ID_COL, COMP_COL, col_prod_base, col_prod_desc, PROV_COL, MONT_COL] if c is not None and c in df.columns]
             tabla_mostrar = unicornios_df[cols_to_show]
             
-            if col_monto:
-                tabla_mostrar = tabla_mostrar.sort_values(by=col_monto, ascending=False)
-                st.dataframe(tabla_mostrar.style.format({col_monto: "${:,.0f}"}), use_container_width=True, hide_index=True)
+            if MONT_COL:
+                tabla_mostrar = tabla_mostrar.sort_values(by=MONT_COL, ascending=False)
+                st.dataframe(tabla_mostrar.style.format({MONT_COL: "${:,.0f}"}), use_container_width=True, hide_index=True)
             else:
                 st.dataframe(tabla_mostrar, use_container_width=True, hide_index=True)
     else:
@@ -247,30 +249,32 @@ if uploaded_file:
                 Eres Cortex, Director Comercial de SmartOffer.
                 Estás analizando un reporte del tipo: '{tipo_reporte}'.
                 
-                TU MAPA DE COLUMNAS SEGURO (PIEDRA ROSETTA):
-                {col_map_final}
-                
-                Columnas adicionales para detalle de producto: {cols_detalle_prod}
+                TIENES ESTAS VARIABLES GLOBALES LISTAS PARA USAR (No uses strings, usa estas variables):
+                `MONT_COL`: '{MONT_COL}' (Monto/Dinero)
+                `PROV_COL`: '{PROV_COL}' (Proveedor/Empresa)
+                `COMP_COL`: '{COMP_COL}' (Comprador/Organismo)
+                `ID_COL`: '{ID_COL}' (ID Licitación/OC)
+                `FECHA_COL`: '{FECHA_COL}' (Fecha)
+                `COLS_PROD`: {COLS_PROD} (Columnas de detalle de producto)
 
-                REGLAS CRÍTICAS DE PROGRAMACIÓN (SI VIOLAS ESTO, EL SISTEMA FALLA):
-                1. EL ÚNICO DATAFRAME SE LLAMA `df`: ¡PROHIBIDO usar las palabras `data`, `dataset` o similares!
-                2. CÓDIGO LINEAL DIRECTO: ESTÁ ESTRICTAMENTE PROHIBIDO usar funciones (NO USES `def`). 
-                3. DECLARACIÓN GLOBAL: La variable `resultado` debe declararse en el ámbito global.
-                4. USO ESTRICTO DEL MAPA: Si necesitas el monto, asume que es `col_map_final['MONTO_REAL']`. Proveedor es `col_map_final['PROVEEDOR_CLAVE']`. Comprador es `col_map_final['COMPRADOR_CLAVE']`. ID es `col_map_final['ID_CLAVE']`.
-                5. Devuelve SOLO código Python puro. SIN markdown (sin ```python).
-                6. Maneja Nulos: Usa `.fillna(0)` antes de agrupar o sumar.
-                7. CERO TEXTO EN DETALLES: Si la pregunta dice "Dime el detalle...", TIENES ESTRICTAMENTE PROHIBIDO generar texto, f-strings o explicaciones. Tu único trabajo es calcular la tabla y asignar ese DataFrame directamente a la variable `resultado` (ej: `resultado = df_filtrado[cols]`).
-                8. FORMATO VISUAL OBLIGATORIO: Siempre que uses `.groupby()`, DEBES usar `.reset_index()` al final.
+                REGLAS CRÍTICAS (SI VIOLAS ESTO, EL SISTEMA FALLA):
+                1. DATAFRAME `df`: ¡PROHIBIDO usar las palabras `data`, `dataset`! Siempre `df`.
+                2. SIN FUNCIONES: CÓDIGO LINEAL. PROHIBIDO USAR `def`.
+                3. VARIABLES GLOBALES: NUNCA escribas 'Nombre Proveedor' o col_map_final['...']. Usa las variables globales `MONT_COL`, `PROV_COL`, `COMP_COL`, `ID_COL`, `COLS_PROD` directamente. Ejemplo correcto: `df.groupby(PROV_COL)[MONT_COL].sum()`.
+                4. DECLARACIÓN: La variable `resultado` debe declararse en el ámbito global.
+                5. SOLO CÓDIGO: Devuelve SOLO código Python puro. SIN markdown (sin ```python).
+                6. ANTI-ALUCINACIONES: ¡PROHIBIDO inventar nombres! Extrae todo de `df`.
+                7. TABLAS PURAS: Si preguntan "detalle de compras", asigna el DataFrame DIRECTO a `resultado`. CERO TEXTO.
                 
-                RECETARIO DE INTELIGENCIA COMERCIAL (SÍGUELO AL PIE DE LA LETRA):
-                - Si preguntan "Dime el detalle de compras del organismo que más gasta": 
-                  Paso 1: Encuentra el top: `top_org = df.groupby(col_map_final['COMPRADOR_CLAVE'])[col_map_final['MONTO_REAL']].sum().idxmax()`
-                  Paso 2: Filtra: `df_filt = df[df[col_map_final['COMPRADOR_CLAVE']] == top_org]`
-                  Paso 3: Define columnas: `cols = [c for c in [col_map_final['ID_CLAVE'], col_map_final['COMPRADOR_CLAVE'], col_map_final['PROVEEDOR_CLAVE'], col_map_final['MONTO_REAL']] + cols_detalle_prod if c in df.columns]`
-                  Paso 4: Asigna: `resultado = df_filt[cols].drop_duplicates()`
-                
+                RECETARIO DE INTELIGENCIA COMERCIAL:
+                - Si preguntan "Dime el detalle de compras del organismo que más gasta":
+                  top_org = df.groupby(COMP_COL)[MONT_COL].sum().idxmax()
+                  df_filt = df[df[COMP_COL] == top_org]
+                  cols = [c for c in [ID_COL, COMP_COL, PROV_COL, MONT_COL] + COLS_PROD if c in df.columns]
+                  resultado = df_filt[cols].drop_duplicates()
+                  
                 - Si preguntan "¿Cuántas compras/licitaciones únicas hay por cada comprador?":
-                  Agrupa por comprador, usa `.agg()` para sacar 'nunique' y 'unique' sobre el ID. Y aplica `.reset_index()`. No uses texto.
+                  resultado = df.groupby(COMP_COL).agg({{ID_COL: ['nunique', 'unique']}}).reset_index()
                 """
                 
                 clean_code = "No se pudo generar código. Posible error de conexión con la IA o límite de API."
@@ -279,7 +283,12 @@ if uploaded_file:
                     response = model.generate_content([system_instruction, prompt])
                     clean_code = response.text.replace("```python", "").replace("```", "").strip()
                     
-                    scope = {"df": df.copy(), "pd": pd, "col_map_final": col_map_final, "cols_detalle_prod": cols_detalle_prod}
+                    # 🚀 INYECTANDO LAS VARIABLES GLOBALES DIRECTAMENTE AL ENTORNO PARA EVITAR TIPEOS 🚀
+                    scope = {
+                        "df": df.copy(), "pd": pd, 
+                        "MONT_COL": MONT_COL, "PROV_COL": PROV_COL, "COMP_COL": COMP_COL,
+                        "ID_COL": ID_COL, "FECHA_COL": FECHA_COL, "COLS_PROD": COLS_PROD
+                    }
                     exec(clean_code, scope)
                     
                     if "resultado" not in scope:
@@ -292,14 +301,12 @@ if uploaded_file:
                     if isinstance(resultado, str):
                         st.markdown(resultado) 
                     elif isinstance(resultado, (pd.Series, pd.DataFrame)):
-                        # Renderizado nativo de Streamlit super limpio para tablas
                         st.dataframe(resultado, use_container_width=True) 
                         prompt_lower = prompt.lower()
                         try: 
                             if any(word in prompt_lower for word in ["tendencia", "evolución", "fecha", "tiempo"]):
                                 st.line_chart(resultado)
                             elif any(word in prompt_lower for word in ["top", "market", "ranking", "compradores", "proveedores"]):
-                                # Ciertas tablas complejas no se deben graficar a menos que sea un top simple
                                 if len(resultado.columns) <= 2:
                                     st.bar_chart(resultado.set_index(resultado.columns[0]))
                         except:
