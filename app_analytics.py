@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 import traceback
+import random
 
 # ==========================================
 # 1. CONFIGURACIÓN DE PÁGINA Y ESTÉTICA
@@ -23,7 +24,6 @@ st.markdown("""
 # ==========================================
 if "GEMINI_API_KEY" not in st.secrets:
     st.error("❌ Error Crítico: No se encontró 'GEMINI_API_KEY' en tus secretos.")
-    st.info("💡 Asegúrate de tener el archivo .streamlit/secrets.toml con tu clave.")
     st.stop()
 
 try:
@@ -38,7 +38,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # ==========================================
-# 3. MOTOR DE RUTEO INTELIGENTE
+# 3. MOTOR DE RUTEO Y PREGUNTAS DINÁMICAS
 # ==========================================
 def detectar_tipo_reporte(columnas):
     cols_str = " ".join(columnas).lower()
@@ -51,13 +51,39 @@ def detectar_tipo_reporte(columnas):
     else:
         return "Análisis General"
 
+def generar_preguntas_sugeridas(tipo_reporte, columnas):
+    preguntas = []
+    cols_str = " ".join(columnas).lower()
+    
+    # Inteligencia de sugerencias basada estrictamente en lo que existe
+    if "proveedor" in cols_str or "empresa" in cols_str:
+        preguntas.append("Genera un informe comercial de la competencia (Market Share).")
+        preguntas.append("¿Cuáles son los 3 proveedores que más dinero mueven?")
+    
+    if "organismo" in cols_str or "comprador" in cols_str:
+        preguntas.append("¿Cuáles son las instituciones o compradores más frecuentes?")
+        preguntas.append("Genera un ranking de los 5 mayores compradores.")
+        
+    if "producto" in cols_str or "descripcion" in cols_str:
+        preguntas.append("Dime el detalle de postulaciones y precios del producto más vendido.")
+        preguntas.append("¿Cuál es el producto o ID que genera más volumen de dinero?")
+        
+    if "precio" in cols_str or "monto" in cols_str:
+        preguntas.append("Haz un análisis de la tendencia de precios.")
+        preguntas.append("¿Cuál es el precio promedio, máximo y mínimo ofertado?")
+        
+    if not preguntas:
+        preguntas = ["Muéstrame un resumen estadístico de estos datos.", "¿Cuántos registros únicos hay por cada categoría?"]
+        
+    return random.sample(preguntas, min(len(preguntas), 4)) # Sugerir hasta 4
+
 # ==========================================
 # 4. INTERFAZ: SIDEBAR Y CARGA DE DATOS
 # ==========================================
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/4712/4712139.png", width=80)
     st.title("Cortex Core")
-    st.markdown("Sube tu reporte descargado del portal (Mercado Público / Convenios).")
+    st.markdown("Sube tu reporte descargado del portal.")
     uploaded_file = st.file_uploader("Cargar Archivo Excel/CSV", type=['xlsx', 'csv'])
     
     st.markdown("---")
@@ -69,7 +95,6 @@ with st.sidebar:
 # 5. NÚCLEO DE PROCESAMIENTO Y DASHBOARDS
 # ==========================================
 if uploaded_file:
-    # --- Lectura Segura ---
     try:
         if uploaded_file.name.endswith('csv'):
             df = pd.read_csv(uploaded_file)
@@ -79,152 +104,117 @@ if uploaded_file:
         st.error(f"Error al leer el archivo: {e}")
         st.stop()
 
-    # --- Detección del Contexto ---
     tipo_reporte = detectar_tipo_reporte(df.columns.tolist())
     
     st.title(f"🤖 Cortex Analytics: Módulo {tipo_reporte}")
     st.success(f"✅ Archivo analizado exitosamente. **{len(df):,} registros procesados.**")
     st.markdown("---")
     
-    # --- DASHBOARDS DINÁMICOS ---
+    # --- PREPARACIÓN DE DATOS (Segura) ---
     if tipo_reporte == "Convenio Marco":
-        df['Fecha_Datetime'] = pd.to_datetime(df['Fecha Lectura'], format='mixed', dayfirst=True, errors='coerce')
-        st.subheader("⚡ Radar de Convenio Marco en Tiempo Real")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("📦 Productos Únicos (IDs)", df.get('ID Producto', pd.Series()).nunique())
-        col2.metric("🏢 Competidores", df.get('Empresa', pd.Series()).nunique())
-        
-        if not df['Fecha_Datetime'].isna().all() and 'Precio Oferta' in df.columns:
-            ultima_fecha = df['Fecha_Datetime'].max()
-            df_reciente = df[df['Fecha_Datetime'] == ultima_fecha]
-            top_5 = df_reciente.nsmallest(5, 'Precio Oferta')[['ID Producto', 'Nombre Producto', 'Región', 'Precio Oferta', 'Empresa']]
-            st.markdown(f"#### 🏆 Top 5 Mejores Precios Ofertados (Última Lectura: {ultima_fecha.strftime('%d/%m/%Y')})")
-            st.dataframe(top_5.style.format({"Precio Oferta": "${:,.0f}"}), use_container_width=True, hide_index=True)
+        df['Fecha_Datetime'] = pd.to_datetime(df.get('Fecha Lectura', pd.Series()), format='mixed', dayfirst=True, errors='coerce')
+        st.subheader("⚡ Radar de Convenio Marco")
+        # (Oculto en esta vista simplificada de dashboard para dar espacio al chat, puedes restaurar los KPIs si lo deseas)
+        st.dataframe(df.head(3), use_container_width=True)
 
     elif tipo_reporte == "Licitaciones":
-        # Cálculos Base de Licitaciones
         df['Fecha_Datetime'] = pd.to_datetime(df.get('Fecha Adjudicación', pd.Series()), format='mixed', dayfirst=True, errors='coerce')
         df['Cantidad Adjudicada'] = pd.to_numeric(df.get('Cantidad Adjudicada', pd.Series()), errors='coerce').fillna(0)
         df['Monto Unitario'] = pd.to_numeric(df.get('Monto Unitario', pd.Series()), errors='coerce').fillna(0)
-        df['Monto_Total_Estimado'] = df['Cantidad Adjudicada'] * df['Monto Unitario']
-
-        st.subheader("📊 Panel Estratégico de Licitaciones Históricas")
-        col1, col2, col3 = st.columns(3)
-        col1.metric("📝 Licitaciones Únicas", df.get('CodigoExterno', pd.Series()).nunique())
+        if 'Monto_Total_Estimado' not in df.columns:
+            df['Monto_Total_Estimado'] = df['Cantidad Adjudicada'] * df['Monto Unitario']
         
-        volumen_total = df[df.get('Moneda') == 'CLP']['Monto_Total_Estimado'].sum() if 'Moneda' in df.columns else df['Monto_Total_Estimado'].sum()
-        col2.metric("💰 Volumen Total Adjudicado", f"${volumen_total:,.0f} CLP")
-        
-        top_comprador = df['Nombre Organismo'].mode()[0] if 'Nombre Organismo' in df.columns and not df['Nombre Organismo'].empty else "N/A"
-        col3.metric("🏢 Mayor Comprador", top_comprador)
-
-        st.markdown("---")
-        
-        # --- SECCIÓN UNICORNIOS (OCÉANOS AZULES) ---
-        st.subheader("🎯 Radar de Oportunidades: Océanos Azules")
-        st.info("💡 **Inteligencia de Mercado:** Cortex ha detectado licitaciones donde la competencia es mínima o nula. Oportunidades clave para altos márgenes.")
-        
-        if 'CodigoExterno' in df.columns and 'Nombre Proveedor' in df.columns:
-            competencia = df.groupby('CodigoExterno')['Nombre Proveedor'].nunique().reset_index()
-            competencia.columns = ['CodigoExterno', 'Num_Competidores']
-            
-            df_unicos = df.drop_duplicates(subset=['CodigoExterno']).merge(competencia, on='CodigoExterno')
-            
-            unicornios_df = df_unicos[df_unicos['Num_Competidores'] == 1]
-            baja_comp_df = df_unicos[df_unicos['Num_Competidores'] == 2]
-            
-            col_u1, col_u2 = st.columns(2)
-            col_u1.metric("🦄 Licitaciones Unicornio (1 solo Proveedor)", len(unicornios_df))
-            col_u2.metric("🛡️ Baja Competencia (Solo 2 Proveedores)", len(baja_comp_df))
-            
-            if not unicornios_df.empty:
-                st.markdown("#### 🔍 Detalle de Licitaciones Unicornio")
-                col_ubicacion = 'Región' if 'Región' in df.columns else 'Nombre Organismo'
-                columnas_mostrar = ['CodigoExterno', col_ubicacion, 'Nombre Producto', 'Nombre Proveedor', 'Monto_Total_Estimado']
-                columnas_mostrar = [c for c in columnas_mostrar if c in unicornios_df.columns]
-                
-                tabla_mostrar = unicornios_df[columnas_mostrar].sort_values(by='Monto_Total_Estimado', ascending=False)
-                st.dataframe(tabla_mostrar.style.format({"Monto_Total_Estimado": "${:,.0f}"}), use_container_width=True, hide_index=True)
-            else:
-                st.success("No se detectaron Licitaciones Unicornio en este reporte.")
-            
+        st.subheader("📊 Panel Estratégico de Licitaciones")
+        st.dataframe(df.head(3), use_container_width=True)
     else: 
-        st.subheader(f"🛒 Panel de Visualización: {tipo_reporte}")
-        st.dataframe(df.head(5), use_container_width=True)
+        st.subheader(f"🛒 Panel de Visualización")
+        st.dataframe(df.head(3), use_container_width=True)
 
     st.markdown("---")
 
     # ==========================================
-    # 6. MOTOR RAG: AGENTE IA (CHAT COMERCIAL)
+    # 6. MOTOR RAG: AGENTE IA (CONCIENCIA DE ESQUEMA)
     # ==========================================
-    st.subheader(f"💬 Analista Inteligente ({tipo_reporte})")
+    st.subheader(f"💬 Analista Estratégico Cortex")
     
+    # 💡 UI: Mostrar preguntas inteligentes basadas en sus datos reales
+    preguntas_sugeridas = generar_preguntas_sugeridas(tipo_reporte, df.columns.tolist())
+    with st.expander("💡 Preguntas sugeridas basadas en tus columnas (Haz clic)"):
+        for p in preguntas_sugeridas:
+            st.markdown(f"- *{p}*")
+
+    # Mostrar historial
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    if prompt := st.chat_input("Ej: Genera un informe comercial de FARMALATINA LTDA..."):
+    if prompt := st.chat_input("Escribe tu consulta estratégica aquí..."):
         
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Cortex procesando estrategia y datos..."):
+            with st.spinner("Cortex mapeando esquema y procesando estrategia..."):
                 
-                # --- EL NUEVO CEREBRO COMERCIAL DE CORTEX ---
+                # --- EL CEREBRO BLINDADO (CONCIENCIA DE COLUMNAS) ---
+                columnas_disponibles = df.columns.tolist()
+                
                 system_instruction = f"""
-                Eres Cortex, el Director Comercial e Inteligencia de Negocios de SmartOffer.
-                Dataset actual: '{tipo_reporte}'. Columnas: {df.columns.tolist()}.
+                Eres Cortex, Director Comercial de SmartOffer.
+                Dataset actual: '{tipo_reporte}'. 
+                
+                ATENCIÓN: Estas son las ÚNICAS columnas que existen en tu DataFrame 'df':
+                {columnas_disponibles}
 
-                REGLAS CRÍTICAS DE PROGRAMACIÓN:
-                1. Devuelve SOLO código Python válido (sin formato markdown ```python ni nada extra). 
-                2. SIEMPRE asigna el resultado final a la variable 'resultado'.
-                3. Si el usuario pide un DATO, GRÁFICO o TABLA: 'resultado' debe ser un DataFrame o Serie de Pandas.
-                4. Si el usuario pide un "INFORME", "RESUMEN" o "ANÁLISIS": Escribe código Pandas para calcular KPIs, y luego construye un string en formato Markdown con un resumen ejecutivo para gerencia. Asigna ese string final a 'resultado'.
-                5. Para Licitaciones, usa SIEMPRE 'Monto_Total_Estimado' para volumen de dinero.
-                6. Maneja nulos con fillna(0) o dropna() antes de sumar o calcular.
+                REGLAS CRÍTICAS DE PROGRAMACIÓN (SI VIOLAS ESTO, EL SISTEMA EXPLOTA):
+                1. SOLO usa las columnas de la lista de arriba. NUNCA inventes nombres de columnas. NUNCA asumas que existe 'Proveedor' si solo dice 'Nombre Proveedor'.
+                2. Si el usuario te pide un cálculo (ej. Market Share) pero te falta la columna necesaria (ej. no hay nada sobre proveedor), NO escribas código Pandas. Simplemente asigna a la variable 'resultado' un string que diga: "No puedo calcular esto porque en tu archivo falta una columna que indique [lo que falte]."
+                3. Si tienes los datos: Devuelve SOLO código Python válido (sin markdown ```python). 
+                4. SIEMPRE asigna el resultado final a la variable 'resultado'.
+                5. Si piden un "INFORME", "RESUMEN" o "ANÁLISIS COMERCIAL": Escribe código Pandas para extraer los datos reales de 'df', y usa esos datos para construir un string en formato Markdown. Asigna ese string a 'resultado'.
+                6. Maneja los valores nulos (fillna o dropna) antes de agrupar o sumar.
                 """
                 
                 try:
                     response = model.generate_content([system_instruction, prompt])
                     clean_code = response.text.replace("```python", "").replace("```", "").strip()
                     
+                    # Ejecución protegida
                     scope = {"df": df.copy(), "pd": pd}
                     exec(clean_code, scope)
                     
                     if "resultado" not in scope:
-                        raise ValueError("El agente IA no generó la variable 'resultado'.")
+                        raise ValueError("El agente no generó la variable 'resultado'.")
                         
                     resultado = scope["resultado"]
 
-                    # --- RENDERIZADO INTELIGENTE (Texto vs Gráficos) ---
+                    # Renderizado Dinámico
                     st.markdown("**Análisis de Cortex:**")
                     
                     if isinstance(resultado, str):
-                        # Si es un Informe Ejecutivo (Texto Markdown)
-                        st.markdown(resultado)
-                        
+                        st.markdown(resultado) # Imprime informes de texto o mensajes de error amigables
                     elif isinstance(resultado, (pd.Series, pd.DataFrame)):
-                        # Si es un cálculo de datos puros, mostrar tabla y posible gráfico
-                        st.write(resultado)
-                        prompt_lower = prompt.lower()
+                        st.write(resultado) # Muestra tablas
                         
-                        if any(word in prompt_lower for word in ["tendencia", "evolución", "tiempo", "histórico", "fecha", "grafico", "gráfico"]):
-                            try:
+                        # Lógica de gráficos segura
+                        prompt_lower = prompt.lower()
+                        try: # Intentar graficar, si falla por tipos de datos, no romper la app
+                            if any(word in prompt_lower for word in ["tendencia", "evolución", "tiempo", "histórico"]):
                                 st.line_chart(resultado)
-                            except:
+                            elif any(word in prompt_lower for word in ["top", "market", "comparativa", "quien", "participacion", "ranking"]):
                                 st.bar_chart(resultado)
-                        elif any(word in prompt_lower for word in ["top", "market share", "comparativa", "quien", "participacion", "ranking"]):
-                            st.bar_chart(resultado)
+                        except Exception as chart_error:
+                            pass # Si no se puede graficar, la tabla ya se mostró arriba
                     else:
                         st.write(resultado)
                             
                     st.session_state.messages.append({"role": "assistant", "content": "Análisis estratégico completado."})
                 
                 except Exception as e:
-                    st.error("⚠️ Hubo un error procesando tu solicitud estratégica. Intenta ser un poco más específico con los nombres.")
-                    # print(f"Error AI: {e}\nTraza: {traceback.format_exc()}") # Oculto en prod
+                    st.error(f"⚠️ Hubo un error procesando esta consulta. Verifica que estés mencionando las columnas correctamente.")
+                    # Solo en desarrollo, quita esto para la demo final:
+                    st.toast(f"Error Técnico AI: Trató de usar columnas inválidas o falló la sintaxis.") 
 
 else:
-    st.info("👋 ¡Hola! Soy Cortex Analytics de SmartOffer. Sube un archivo de Mercado Público o Convenios Marco en el menú lateral para iniciar el escáner comercial.")
+    st.info("👋 ¡Hola! Soy Cortex Analytics. Sube tu archivo Excel/CSV para que analice tus columnas y activemos el modo estratégico.")
