@@ -50,14 +50,21 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # ==========================================
-# 3. MOTOR DE RUTEO INTELIGENTE
+# 3. MOTOR DE RUTEO INTELIGENTE (EL KRAKEN)
 # ==========================================
 def detectar_tipo_reporte(columnas):
     cols_str = " ".join(columnas).lower()
-    if "estado compra ágil" in cols_str or "estado compra agil" in cols_str:
+    
+    # 1. Detectar Órdenes de Compra (Detalle OC) - EL 4TO CEREBRO
+    if "nombreprovider" in cols_str and "totallinea" in cols_str:
+        return "Órdenes de Compra"
+    # 2. Detectar Compras Ágiles (Postulaciones)
+    elif "estado compra ágil" in cols_str or "estado compra agil" in cols_str:
         return "Compras Ágiles"
+    # 3. Detectar Licitaciones Históricas
     elif "estado licitación" in cols_str or "estado licitacion" in cols_str:
         return "Licitaciones"
+    # 4. Detectar Convenio Marco
     elif "fecha lectura" in cols_str or "precio sin oferta" in cols_str:
         return "Convenio Marco"
     else:
@@ -98,21 +105,17 @@ if uploaded_file:
     tipo_reporte = detectar_tipo_reporte(df.columns.tolist())
     st.title(f"🤖 Cortex Analytics: Módulo {tipo_reporte}")
     
-    with st.spinner("🛡️ Saneando datos y mapeando inteligencia..."):
+    with st.spinner("🛡️ Saneando datos y mapeando inteligencia (Cerebro Múltiple)..."):
         col_map = {}
         cols_detalle_prod = []
 
+        # --- A. Licitaciones y Compras Ágiles (Postulaciones) ---
         if tipo_reporte in ["Licitaciones", "Compras Ágiles"]:
-            if 'Cantidad Adjudicada' in df.columns:
-                df['Cantidad Adjudicada'] = limpiar_numeros(df['Cantidad Adjudicada'])
-            if 'Monto Unitario' in df.columns:
-                df['Monto Unitario'] = limpiar_numeros(df['Monto Unitario'])
-            
+            if 'Cantidad Adjudicada' in df.columns: df['Cantidad Adjudicada'] = limpiar_numeros(df['Cantidad Adjudicada'])
+            if 'Monto Unitario' in df.columns: df['Monto Unitario'] = limpiar_numeros(df['Monto Unitario'])
             if 'Cantidad Adjudicada' in df.columns and 'Monto Unitario' in df.columns:
                 df['Monto_Total_Estimado'] = df['Cantidad Adjudicada'] * df['Monto Unitario']
-            
-            if 'Fecha Adjudicación' in df.columns:
-                df['Fecha_Datetime'] = limpiar_fechas(df['Fecha Adjudicación'])
+            if 'Fecha Adjudicación' in df.columns: df['Fecha_Datetime'] = limpiar_fechas(df['Fecha Adjudicación'])
 
             col_map = {
                 'MONTO_REAL': 'Monto_Total_Estimado' if 'Monto_Total_Estimado' in df.columns else 'Monto Unitario',
@@ -123,11 +126,24 @@ if uploaded_file:
             }
             cols_detalle_prod = ['Nombre Producto', 'Descripcion Producto']
 
+        # --- B. Órdenes de Compra (EL NUEVO 4TO MUNDO) ---
+        elif tipo_reporte == "Órdenes de Compra":
+            if 'TotalLinea' in df.columns: df['TotalLinea'] = limpiar_numeros(df['TotalLinea'])
+            if 'FechaAceptacion' in df.columns: df['Fecha_Datetime'] = limpiar_fechas(df['FechaAceptacion'])
+
+            col_map = {
+                'MONTO_REAL': 'TotalLinea',
+                'PROVEEDOR_CLAVE': 'NombreProvider',
+                'COMPRADOR_CLAVE': 'NombreUnidad', # Mejor que NombreOrganismo que a veces viene nulo aquí
+                'FECHA_CLAVE': 'Fecha_Datetime',
+                'ID_CLAVE': 'Codigo'
+            }
+            cols_detalle_prod = ['Producto', 'EspecificacionProveedor']
+
+        # --- C. Convenio Marco ---
         elif tipo_reporte == "Convenio Marco":
-            if 'Precio Oferta' in df.columns:
-                df['Precio Oferta'] = limpiar_numeros(df['Precio Oferta'])
-            if 'Fecha Lectura' in df.columns:
-                df['Fecha_Datetime'] = limpiar_fechas(df['Fecha Lectura'])
+            if 'Precio Oferta' in df.columns: df['Precio Oferta'] = limpiar_numeros(df['Precio Oferta'])
+            if 'Fecha Lectura' in df.columns: df['Fecha_Datetime'] = limpiar_fechas(df['Fecha Lectura'])
 
             col_map = {
                 'MONTO_REAL': 'Precio Oferta',
@@ -138,19 +154,21 @@ if uploaded_file:
             }
             cols_detalle_prod = ['Nombre Producto', 'Formato']
         
+        # Filtro final: asegurar que las columnas mapeadas realmente existan
         col_map_final = {k: v for k, v in col_map.items() if v in df.columns}
     
     st.success(f"✅ Archivo blindado y listo. **{len(df):,} registros procesados.**")
     st.markdown("---")
 
     # ==========================================
-    # 🎯 EL "OJO DE DIOS": RADAR DE UNICORNIOS
+    # 🎯 EL "OJO DE DIOS": RADAR DE UNICORNIOS 
     # ==========================================
     st.subheader("🎯 Radar de Oportunidades: Océanos Azules")
     st.info("💡 **Inteligencia de Mercado:** Cortex escanea buscando negocios donde la competencia es mínima o nula (Monopolios).")
     
-    col_id = next((c for c in df.columns if c.lower() in ['codigoexterno', 'id licitacion', 'orden de compra', 'id producto']), None)
-    col_prov = next((c for c in df.columns if c.lower() in ['nombre proveedor', 'proveedor', 'empresa', 'rut proveedor']), None)
+    # 🧠 El Ojo de Dios ahora usa directamente la Piedra Rosetta para no equivocarse jamás
+    col_id = col_map_final.get('ID_CLAVE')
+    col_prov = col_map_final.get('PROVEEDOR_CLAVE')
     
     if col_id and col_prov:
         competencia = df.groupby(col_id)[col_prov].nunique().reset_index()
@@ -161,16 +179,20 @@ if uploaded_file:
         baja_comp_df = df_unicos[df_unicos['Num_Competidores'] == 2]
         
         col_u1, col_u2 = st.columns(2)
-        etiqueta_negocio = "Órdenes" if tipo_reporte == "Compras Ágiles" else "Licitaciones"
+        etiqueta_negocio = "Negocios" if tipo_reporte in ["Órdenes de Compra", "Compras Ágiles"] else "Licitaciones"
         col_u1.metric(f"🦄 {etiqueta_negocio} Unicornio (1 solo Proveedor)", len(unicornios_df))
         col_u2.metric("🛡️ Baja Competencia (Solo 2 Proveedores)", len(baja_comp_df))
         
         if not unicornios_df.empty:
             st.markdown(f"#### 🔍 Detalle de {etiqueta_negocio} Unicornio")
-            col_monto = 'Monto_Total_Estimado' if 'Monto_Total_Estimado' in df.columns else next((c for c in df.columns if 'precio oferta' in c.lower() or 'monto' in c.lower()), None)
-            col_org = next((c for c in df.columns if 'organismo' in c.lower() or 'comprador' in c.lower() or 'región' in c.lower()), None)
+            col_monto = col_map_final.get('MONTO_REAL')
+            col_org = col_map_final.get('COMPRADOR_CLAVE')
             
-            cols_to_show = [c for c in [col_id, col_org, 'Nombre Producto', 'Descripcion Producto', col_prov, col_monto] if c is not None and c in df.columns]
+            # Recuperar dinámicamente el nombre del producto según el reporte
+            col_prod_base = cols_detalle_prod[0] if len(cols_detalle_prod) > 0 else None
+            col_prod_desc = cols_detalle_prod[1] if len(cols_detalle_prod) > 1 else None
+            
+            cols_to_show = [c for c in [col_id, col_org, col_prod_base, col_prod_desc, col_prov, col_monto] if c is not None and c in df.columns]
             tabla_mostrar = unicornios_df[cols_to_show]
             
             if col_monto:
@@ -179,7 +201,7 @@ if uploaded_file:
             else:
                 st.dataframe(tabla_mostrar, use_container_width=True, hide_index=True)
     else:
-        st.warning("⚠️ Faltan columnas de ID o Proveedor para calcular los monopolios.")
+        st.warning("⚠️ Faltan columnas de ID o Proveedor mapeadas para calcular los monopolios.")
 
     st.markdown("---")
 
@@ -232,24 +254,25 @@ if uploaded_file:
         with st.chat_message("assistant"):
             with st.spinner(f"Cortex procesando modelo '{tipo_reporte}' con Gemini 2.5 Flash..."):
                 
+                # --- EL CEREBRO BLINDADO CON PIEDRA ROSETTA ---
                 system_instruction = f"""
                 Eres Cortex, Director Comercial de SmartOffer.
-                Tipo de Reporte: '{tipo_reporte}'.
+                Estás analizando un reporte del tipo: '{tipo_reporte}'.
                 
-                TU MAPA DE COLUMNAS SEGURO:
+                TU MAPA DE COLUMNAS SEGURO (PIEDRA ROSETTA):
                 {col_map_final}
                 
                 Columnas adicionales para detalle de producto: {cols_detalle_prod}
 
                 REGLAS CRÍTICAS DE PROGRAMACIÓN (SI VIOLAS ESTO, EL SISTEMA FALLA):
-                1. EL ÚNICO DATAFRAME SE LLAMA `df`: ¡ESTÁ ESTRICTAMENTE PROHIBIDO usar las palabras `data`, `dataset`, o cualquier otra variable para referirte al dataframe! SIEMPRE y ÚNICAMENTE usa `df`. (Ejemplo correcto: `df.groupby(...)`).
-                2. CÓDIGO LINEAL DIRECTO: ESTÁ ESTRICTAMENTE PROHIBIDO envolver tu respuesta en funciones (NO USES `def`). Escribe las instrucciones de Pandas de forma directa y secuencial.
-                3. DECLARACIÓN GLOBAL: La variable `resultado` debe declararse en el ámbito global (sin espacios de indentación previos).
-                4. USO ESTRICTO DEL MAPA: Si necesitas monto, usa `col_map_final['MONTO_REAL']`. Si necesitas proveedor, usa `col_map_final['PROVEEDOR_CLAVE']`. 
+                1. EL ÚNICO DATAFRAME SE LLAMA `df`: ¡ESTÁ ESTRICTAMENTE PROHIBIDO usar las palabras `data`, `dataset` o similares! SIEMPRE usa `df`. 
+                2. CÓDIGO LINEAL DIRECTO: ESTÁ ESTRICTAMENTE PROHIBIDO envolver tu respuesta en funciones (NO USES `def`). 
+                3. DECLARACIÓN GLOBAL: La variable `resultado` debe declararse en el ámbito global.
+                4. USO ESTRICTO DEL MAPA: Si necesitas el monto, asume que es la columna `col_map_final['MONTO_REAL']`. Si necesitas proveedor, usa `col_map_final['PROVEEDOR_CLAVE']`. 
                 5. Devuelve SOLO código Python puro. SIN markdown (sin ```python).
-                6. Maneja Nulos: Usa `.fillna(0)` antes de sumar montos.
-                7. Informes: Si piden "Informe", calcula los KPIs y usa f-strings para guardar en 'resultado' un texto ejecutivo.
-                8. PROHIBIDO usar `df.to_markdown()`. Si necesitas mostrar tabla, simplemente asigna el DataFrame a la variable `resultado` (ej: `resultado = df_detalle`).
+                6. Maneja Nulos: Usa `.fillna(0)` antes de agrupar o sumar.
+                7. Informes: Si piden "Informe", calcula los KPIs y usa f-strings para guardar en 'resultado' un texto ejecutivo Markdown.
+                8. PROHIBIDO usar `df.to_markdown()`. Si necesitas mostrar tabla, asigna el DataFrame a la variable `resultado` (ej: `resultado = df_detalle`).
                 """
                 
                 clean_code = "No se pudo generar código. Posible error de conexión con la IA o límite de API."
