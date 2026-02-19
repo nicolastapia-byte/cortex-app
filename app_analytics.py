@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 import traceback
+import re
 
 # ==========================================
-# 1. CONFIGURACIÓN DE PÁGINA Y ESTÉTICA
+# 1. CONFIGURACIÓN Y FUNCIONES UTILITARIAS BLINDADAS
 # ==========================================
-st.set_page_config(page_title="Cortex Analytics: Suite Comercial", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="Cortex Analytics: Suite Comercial Robusta", page_icon="🛡️", layout="wide")
 
 st.markdown("""
     <style>
@@ -15,15 +16,30 @@ st.markdown("""
     h1 { color: #00d4ff; font-family: 'Inter', sans-serif; font-weight: 800; }
     .stChatMessage { border-radius: 15px; border: 1px solid #30363d; margin-bottom: 10px; }
     div[data-testid="stMetricValue"] { color: #00d4ff; }
-    .prompt-box { background-color: #21262d; padding: 10px; border-radius: 8px; margin-bottom: 5px; border-left: 3px solid #00d4ff; font-size: 0.9em;}
+    .prompt-box { background-color: #21262d; padding: 8px; border-radius: 5px; margin-bottom: 5px; border-left: 3px solid #00d4ff; font-size: 0.85em; cursor: pointer;}
+    .prompt-box:hover { background-color: #30363d; }
     </style>
     """, unsafe_allow_html=True)
+
+# Función robusta para limpiar columnas numéricas (maneja $, puntos, comas)
+def limpiar_numeros(serie):
+    if pd.api.types.is_numeric_dtype(serie):
+        return serie.fillna(0)
+    # Si es texto, intentar limpiar caracteres no numéricos excepto puntos y comas decimales
+    try:
+        return serie.astype(str).str.replace(r'[^\d.,-]', '', regex=True).str.replace(',', '.').astype(float).fillna(0)
+    except:
+        return pd.to_numeric(serie, errors='coerce').fillna(0)
+
+# Función robusta para limpiar fechas
+def limpiar_fechas(serie):
+    return pd.to_datetime(serie, format='mixed', dayfirst=True, errors='coerce')
 
 # ==========================================
 # 2. INICIALIZACIÓN DE IA Y ESTADOS
 # ==========================================
 if "GEMINI_API_KEY" not in st.secrets:
-    st.error("❌ Error Crítico: No se encontró 'GEMINI_API_KEY' en tus secretos.")
+    st.error("🛡️ Seguridad: No se encontró 'GEMINI_API_KEY' en secrets.toml.")
     st.stop()
 
 try:
@@ -31,17 +47,18 @@ try:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-1.5-flash')
 except Exception as e:
-    st.error(f"❌ Error conectando con Gemini: {str(e)}")
+    st.error(f"🛡️ Error de conexión API: {str(e)}")
     st.stop()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 # ==========================================
-# 3. MOTOR DE RUTEO INTELIGENTE
+# 3. MOTOR DE RUTEO Y PREPARACIÓN DE DATOS
 # ==========================================
 def detectar_tipo_reporte(columnas):
     cols_str = " ".join(columnas).lower()
+    # Detección priorizada
     if "estado compra ágil" in cols_str or "estado compra agil" in cols_str:
         return "Compras Ágiles"
     elif "estado licitación" in cols_str or "estado licitacion" in cols_str:
@@ -52,198 +69,176 @@ def detectar_tipo_reporte(columnas):
         return "Análisis General"
 
 # ==========================================
-# 4. INTERFAZ: SIDEBAR Y CARGA DE DATOS
+# 4. INTERFAZ: CARGA
 # ==========================================
 with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/4712/4712139.png", width=80)
-    st.title("Cortex Core")
-    st.markdown("Sube tu reporte de Mercado Público / Convenios.")
-    uploaded_file = st.file_uploader("Cargar Archivo Excel/CSV", type=['xlsx', 'csv'])
+    st.title("Cortex Core 🛡️")
+    st.markdown("Sistema blindado para análisis de Mercado Público.")
+    uploaded_file = st.file_uploader("Cargar Archivo (Excel/CSV)", type=['xlsx', 'csv'])
     
     st.markdown("---")
-    if st.button("🧹 Limpiar Historial de Chat"):
+    if st.button("🧹 Limpiar Historial"):
         st.session_state.messages = []
         st.rerun()
 
 # ==========================================
-# 5. NÚCLEO DE PROCESAMIENTO Y DASHBOARDS
+# 5. NÚCLEO DE PROCESAMIENTO SEGURO
 # ==========================================
 if uploaded_file:
     try:
         if uploaded_file.name.endswith('csv'):
-            df = pd.read_csv(uploaded_file)
+            # Intentar leer CSV con diferentes codificaciones si falla la estándar
+            try:
+                df = pd.read_csv(uploaded_file)
+            except UnicodeDecodeError:
+                 df = pd.read_csv(uploaded_file, encoding='latin1')
         else:
             df = pd.read_excel(uploaded_file)
+            
+        # --- SANEAMIENTO INICIAL BÁSICO ---
+        df.columns = df.columns.str.strip() # Eliminar espacios en nombres de columnas
+        
     except Exception as e:
-        st.error(f"Error al leer el archivo: {e}")
+        st.error(f"🛡️ El archivo está corrupto o tiene un formato ilegible: {e}")
         st.stop()
 
     tipo_reporte = detectar_tipo_reporte(df.columns.tolist())
+    st.title(f"🤖 Módulo Blindado: {tipo_reporte}")
     
-    st.title(f"🤖 Cortex Analytics: Módulo {tipo_reporte}")
-    st.success(f"✅ Archivo analizado. **{len(df):,} registros procesados.**")
-    
-    # --- PREPARACIÓN DE DATOS BASE ---
-    if tipo_reporte in ["Licitaciones", "Compras Ágiles"]:
-        if 'Cantidad Adjudicada' in df.columns and 'Monto Unitario' in df.columns:
-            df['Cantidad Adjudicada'] = pd.to_numeric(df['Cantidad Adjudicada'], errors='coerce').fillna(0)
-            df['Monto Unitario'] = pd.to_numeric(df['Monto Unitario'], errors='coerce').fillna(0)
-            df['Monto_Total_Estimado'] = df['Cantidad Adjudicada'] * df['Monto Unitario']
-        if 'Fecha Adjudicación' in df.columns:
-            df['Fecha_Datetime'] = pd.to_datetime(df['Fecha Adjudicación'], format='mixed', dayfirst=True, errors='coerce')
+    # ====================================================
+    # 🛡️ CAPA DE PREPARACIÓN DE DATOS (Data Sanitation)
+    # ====================================================
+    with st.spinner("🛡️ Cortex saneando datos y calculando métricas base..."):
+        try:
+            # Variables para la "Piedra Rosetta"
+            col_map = {} 
+            cols_detalle_prod = []
 
-    elif tipo_reporte == "Convenio Marco":
-        if 'Fecha Lectura' in df.columns:
-            df['Fecha_Datetime'] = pd.to_datetime(df['Fecha Lectura'], format='mixed', dayfirst=True, errors='coerce')
+            if tipo_reporte in ["Licitaciones", "Compras Ágiles"]:
+                # 1. Limpieza Numérica Obligatoria
+                if 'Cantidad Adjudicada' in df.columns:
+                    df['Cantidad Adjudicada'] = limpiar_numeros(df['Cantidad Adjudicada'])
+                if 'Monto Unitario' in df.columns:
+                    df['Monto Unitario'] = limpiar_numeros(df['Monto Unitario'])
+                
+                # 2. Cálculo Seguro de Monto Total
+                if 'Cantidad Adjudicada' in df.columns and 'Monto Unitario' in df.columns:
+                    df['Monto_Total_Estimado'] = df['Cantidad Adjudicada'] * df['Monto Unitario']
+                else:
+                    # Fallback si faltan columnas clave
+                    df['Monto_Total_Estimado'] = 0
+                    st.warning("⚠️ Faltan columnas 'Cantidad Adjudicada' o 'Monto Unitario'. El análisis de volumen no será preciso.")
 
-    # --- RADAR DE UNICORNIOS (MONOPOLIOS) "OJO DE DIOS" ---
-    st.subheader("🎯 Radar de Oportunidades: Océanos Azules")
-    
-    col_id = next((c for c in df.columns if c.lower() in ['codigoexterno', 'id licitacion', 'orden de compra', 'id producto']), None)
-    col_prov = next((c for c in df.columns if c.lower() in ['nombre proveedor', 'proveedor', 'empresa', 'rut proveedor']), None)
-    
-    if col_id and col_prov:
-        competencia = df.groupby(col_id)[col_prov].nunique().reset_index()
-        competencia.columns = [col_id, 'Num_Competidores']
-        df_unicos = df.drop_duplicates(subset=[col_id]).merge(competencia, on=col_id)
-        
-        unicornios_df = df_unicos[df_unicos['Num_Competidores'] == 1]
-        baja_comp_df = df_unicos[df_unicos['Num_Competidores'] == 2]
-        
-        col_u1, col_u2 = st.columns(2)
-        etiqueta_negocio = "Órdenes" if tipo_reporte == "Compras Ágiles" else "Licitaciones"
-        col_u1.metric(f"🦄 {etiqueta_negocio} Unicornio (1 solo Proveedor)", len(unicornios_df))
-        col_u2.metric("🛡️ Baja Competencia (Solo 2 Proveedores)", len(baja_comp_df))
-        
-        if not unicornios_df.empty:
-            st.markdown(f"#### 🔍 Detalle de {etiqueta_negocio} Unicornio")
-            col_monto = 'Monto_Total_Estimado' if 'Monto_Total_Estimado' in df.columns else next((c for c in df.columns if 'precio' in c.lower() or 'monto' in c.lower()), None)
-            col_prod = next((c for c in df.columns if 'producto' in c.lower() or 'descripcion' in c.lower()), None)
-            col_org = next((c for c in df.columns if 'organismo' in c.lower() or 'comprador' in c.lower() or 'región' in c.lower()), None)
+                # 3. Limpieza de Fechas
+                if 'Fecha Adjudicación' in df.columns:
+                    df['Fecha_Datetime'] = limpiar_fechas(df['Fecha Adjudicación'])
+
+                # 4. Definir Mapa de Columnas (Piedra Rosetta)
+                col_map = {
+                    'MONTO_REAL': 'Monto_Total_Estimado',
+                    'PROVEEDOR_CLAVE': 'Nombre Proveedor',
+                    'COMPRADOR_CLAVE': 'Nombre Organismo',
+                    'FECHA_CLAVE': 'Fecha_Datetime',
+                    'ID_CLAVE': 'CodigoExterno' if 'CodigoExterno' in df.columns else 'ID Licitación'
+                }
+                cols_detalle_prod = ['Nombre Producto', 'Descripcion Producto']
+
+            elif tipo_reporte == "Convenio Marco":
+                 # 1. Limpieza Numérica
+                if 'Precio Oferta' in df.columns:
+                    df['Precio Oferta'] = limpiar_numeros(df['Precio Oferta'])
+                
+                # 2. Limpieza de Fechas
+                if 'Fecha Lectura' in df.columns:
+                     df['Fecha_Datetime'] = limpiar_fechas(df['Fecha Lectura'])
+
+                # 3. Definir Mapa de Columnas (Piedra Rosetta)
+                col_map = {
+                    'MONTO_REAL': 'Precio Oferta',
+                    'PROVEEDOR_CLAVE': 'Empresa',
+                    'COMPRADOR_CLAVE': 'Región', # En CM usamos Región como proxy de comprador/zona
+                    'FECHA_CLAVE': 'Fecha_Datetime',
+                    'ID_CLAVE': 'ID Producto'
+                }
+                cols_detalle_prod = ['Nombre Producto', 'Formato']
             
-            cols_to_show = [c for c in [col_id, col_org, col_prod, col_prov, col_monto] if c is not None]
-            tabla_mostrar = unicornios_df[cols_to_show]
+            # Validar que las columnas del mapa realmente existan después de la limpieza
+            col_map_final = {k: v for k, v in col_map.items() if v in df.columns}
             
-            if col_monto:
-                tabla_mostrar = tabla_mostrar.sort_values(by=col_monto, ascending=False)
-                st.dataframe(tabla_mostrar.style.format({col_monto: "${:,.0f}"}), use_container_width=True, hide_index=True)
-            else:
-                st.dataframe(tabla_mostrar, use_container_width=True, hide_index=True)
-    else:
-        st.warning("⚠️ Faltan columnas de ID o Proveedor para calcular los monopolios.")
+            st.success(f"✅ Datos saneados y esquema mapeado. **{len(df):,} registros listos.**")
 
+        except Exception as e:
+             st.error(f"🛡️ Error crítico durante la preparación de datos: {e}")
+             st.stop()
+            
     st.markdown("---")
 
     # ==========================================
-    # 6. MOTOR RAG (CHAT PRE-ENTRENADO)
+    # 6. MOTOR RAG: CHAT COMERCIAL ROBUSTO
     # ==========================================
-    st.subheader(f"💬 Consultor Estratégico Cortex")
-    
-    with st.expander("📖 Catálogo de Prompts Comerciales (Copia y pega la pregunta que necesites)"):
+    st.subheader(f"💬 Consultor Estratégico")
+
+    # Menú de Prompts Fijo (Copia y Pega seguro)
+    with st.expander("📖 Menú de Preguntas Comerciales (Copiar y Pegar)"):
         col_a, col_b = st.columns(2)
         with col_a:
-            st.markdown("**📊 Análisis de Competencia**")
-            st.markdown('<div class="prompt-box">Genera un informe comercial de Market Share por proveedor.</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">¿Cuáles son los 5 proveedores que más dinero mueven?</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">Muestra el ranking de las empresas con más adjudicaciones.</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">Compara el precio máximo y mínimo ofertado por cada empresa.</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">¿Qué competidor tiene el precio promedio más bajo ofertado?</div>', unsafe_allow_html=True)
-            
-            st.markdown("**🛒 Compradores y Clientes**")
-            st.markdown('<div class="prompt-box">Genera un ranking de los 5 mayores compradores u organismos.</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">¿Qué regiones o instituciones concentran el mayor gasto?</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">Dime el detalle de compras del organismo que más gasta.</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">¿Cuántas compras/licitaciones únicas hay por cada comprador?</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">Muestra la tabla de compradores ordenados por monto total.</div>', unsafe_allow_html=True)
-
+            st.markdown("**📊 Competencia & Mercado**")
+            st.code("Genera un informe de Market Share (cuota de mercado) por competidor.")
+            st.code("Ranking de los 5 mayores competidores por volumen de dinero.")
+            st.code("¿Qué competidor tiene el precio/monto promedio más bajo?")
         with col_b:
-            st.markdown("**📦 Productos y Precios**")
-            st.markdown('<div class="prompt-box">¿Cuál es el producto que genera más volumen de dinero?</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">Haz un análisis de la tendencia de precios en el tiempo.</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">Genera un reporte detallado del producto más demandado.</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">¿Cuál es el precio promedio, máximo y mínimo por producto?</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">Muestra los 5 productos con mayor cantidad adjudicada.</div>', unsafe_allow_html=True)
-            
-            st.markdown("**🎯 Estrategia y Oportunidades**")
-            st.markdown('<div class="prompt-box">¿Cuáles son los negocios más rentables (Top 5 por mayor monto)?</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">Resume los montos totales adjudicados agrupados por fecha.</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">¿Cuál es el ticket promedio (monto) por negocio?</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">Crea un resumen estadístico general de todos los datos.</div>', unsafe_allow_html=True)
-            st.markdown('<div class="prompt-box">Genera un informe detallando las oportunidades de negocio en este archivo.</div>', unsafe_allow_html=True)
+            st.markdown("**🎯 Estrategia & Oportunidades**")
+            st.code("Análisis de tendencia de montos/precios en el tiempo.")
+            st.code("Ranking de los mayores compradores u organismos.")
+            st.code("Dime el detalle del producto que más dinero mueve.")
 
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    if prompt := st.chat_input("Pega aquí uno de los Prompts Comerciales..."):
+    if prompt := st.chat_input("Pega aquí una pregunta del menú..."):
         
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner(f"Cortex aplicando modelo '{tipo_reporte}'..."):
+            with st.spinner("Cortex ejecutando análisis seguro..."):
                 
-                columnas_disponibles = df.columns.tolist()
-                
-                # ========================================================
-                # 🧠 ENTRENAMIENTO ESPECÍFICO POR TIPO DE REPORTE (LA MAGIA)
-                # ========================================================
-                entrenamiento_especifico = ""
-                
-                if tipo_reporte == "Licitaciones":
-                    entrenamiento_especifico = """
-                    ESTÁS ANALIZANDO: LICITACIONES PÚBLICAS.
-                    - La empresa competidora está en 'Nombre Proveedor'.
-                    - El comprador está en 'Nombre Organismo'.
-                    - Para VOLUMEN DE DINERO o MARKET SHARE: Usa SIEMPRE la columna calculada 'Monto_Total_Estimado'.
-                    - Para detalle de PRODUCTOS: DEBES incluir en tus tablas ambas columnas: 'Nombre Producto' y 'Descripcion Producto' para que el usuario sepa exactamente qué se vendió.
-                    - Las fechas están en 'Fecha_Datetime'.
-                    """
-                elif tipo_reporte == "Compras Ágiles":
-                    entrenamiento_especifico = """
-                    ESTÁS ANALIZANDO: COMPRAS ÁGILES (Micromercado).
-                    - La empresa competidora está en 'Nombre Proveedor'.
-                    - El comprador está en 'Nombre Organismo'.
-                    - Para VOLUMEN DE DINERO o MARKET SHARE: Usa SIEMPRE la columna calculada 'Monto_Total_Estimado'.
-                    - Para detalle de PRODUCTOS: DEBES incluir en tus tablas ambas columnas: 'Nombre Producto' y 'Descripcion Producto' para ver la especificación técnica.
-                    - Las fechas están en 'Fecha_Datetime'.
-                    """
-                elif tipo_reporte == "Convenio Marco":
-                    entrenamiento_especifico = """
-                    ESTÁS ANALIZANDO: CONVENIO MARCO (Catálogo).
-                    - La empresa competidora está en 'Empresa'.
-                    - La zona geográfica es 'Región'.
-                    - Para PRECIOS y MARKET SHARE: Aquí no hay Monto_Total_Estimado. Usa 'Precio Oferta'.
-                    - Para detalle de PRODUCTOS: Usa 'Nombre Producto' y 'Formato' (No existe Descripcion Producto).
-                    - Las fechas están en 'Fecha_Datetime'.
-                    """
-                else:
-                    entrenamiento_especifico = "Usa las columnas disponibles para deducir la mejor respuesta."
-
+                # --- EL CEREBRO BLINDADO CON "PIEDRA ROSETTA" ---
+                # Inyectamos el mapa exacto de columnas como un diccionario Python
                 system_instruction = f"""
                 Eres Cortex, Director Comercial de SmartOffer.
-                Columnas exactas en 'df': {columnas_disponibles}
+                Tipo de Reporte: '{tipo_reporte}'.
                 
-                {entrenamiento_especifico}
+                TU MAPA DE COLUMNAS SEGURO (PIEDRA ROSETTA):
+                {col_map_final}
+                
+                Columnas adicionales de detalle de producto: {cols_detalle_prod}
 
-                REGLAS CRÍTICAS DE PROGRAMACIÓN:
-                1. SOLO usa las columnas de la lista. Nunca asumas nombres.
-                2. Devuelve SOLO código Python puro. SIN markdown (sin ```python).
-                3. SIEMPRE asigna el resultado a la variable 'resultado'.
-                4. Si el usuario pide un "Informe" o "Resumen", haz los cálculos con pandas, y guarda en 'resultado' un string con el formato Markdown. Si pide tabla/gráfico, guarda en 'resultado' un DataFrame.
-                5. Maneja los valores nulos (fillna) antes de sumar o calcular medias.
+                REGLAS CRÍTICAS DE PROGRAMACIÓN (ANTI-ERRORES):
+                1.  **USO ESTRICTO DEL MAPA:** NO uses nombres de columnas en strings. Usa SIEMPRE las llaves del mapa.
+                    * Incorrecto: `df.groupby('Nombre Proveedor')['Monto_Total_Estimado'].sum()`
+                    * **CORRECTO:** `df.groupby(col_map_final['PROVEEDOR_CLAVE'])[col_map_final['MONTO_REAL']].sum()`
+                2.  Devuelve SOLO código Python puro. SIN markdown (sin ```python).
+                3.  SIEMPRE asigna el resultado a la variable 'resultado'.
+                4.  **Manejo de Nulos:** Usa `.fillna(0)` antes de sumar y `.dropna()` antes de agrupar si es necesario.
+                5.  **Informes:** Si piden "Informe", calcula los datos con pandas, y luego usa f-strings para crear un resumen ejecutivo en Markdown.
+                6.  **Detalle de Productos:** Si piden detalle, asegúrate de incluir las columnas en `cols_detalle_prod`.
                 """
                 
                 try:
+                    # Llamada a la API con el prompt blindado
                     response = model.generate_content([system_instruction, prompt])
                     clean_code = response.text.replace("```python", "").replace("```", "").strip()
                     
-                    scope = {"df": df.copy(), "pd": pd}
+                    # Entorno de ejecución seguro con las variables necesarias
+                    scope = {"df": df.copy(), "pd": pd, "col_map_final": col_map_final, "cols_detalle_prod": cols_detalle_prod}
                     exec(clean_code, scope)
                     
                     if "resultado" not in scope:
-                        raise ValueError("No se generó la variable 'resultado'.")
+                        raise ValueError("El código generado no produjo la variable 'resultado'.")
                         
                     resultado = scope["resultado"]
 
@@ -253,14 +248,13 @@ if uploaded_file:
                         st.markdown(resultado) 
                     elif isinstance(resultado, (pd.Series, pd.DataFrame)):
                         st.write(resultado) 
-                        
                         prompt_lower = prompt.lower()
                         try: 
-                            if any(word in prompt_lower for word in ["tendencia", "evolución", "fecha", "tiempo"]):
+                            if any(word in prompt_lower for word in ["tendencia", "evolución", "fecha", "tiempo"]) and 'FECHA_CLAVE' in col_map_final:
                                 st.line_chart(resultado)
-                            elif any(word in prompt_lower for word in ["top", "market share", "ranking", "compradores", "proveedores"]):
+                            elif any(word in prompt_lower for word in ["top", "market", "ranking", "compradores", "competidor"]):
                                 st.bar_chart(resultado)
-                        except Exception:
+                        except:
                             pass 
                     else:
                         st.write(resultado)
@@ -268,8 +262,38 @@ if uploaded_file:
                     st.session_state.messages.append({"role": "assistant", "content": "Análisis estratégico completado."})
                 
                 except Exception as e:
-                    st.error("⚠️ Cortex no pudo procesar esta consulta. Esto suele ocurrir si el prompt pide analizar una columna que no está presente en tu archivo actual.")
-                    # print(f"Traza: {traceback.format_exc()}") # Puedes descomentar para debugear
+                    # Captura de errores de ejecución de Pandas generado por IA
+                    st.error(f"🛡️ No se pudo ejecutar el análisis. El código generado por la IA falló con los datos actuales.")
+                    with st.expander("Ver detalles técnicos del error (para soporte)"):
+                        st.code(f"Error: {e}\n\nCódigo intentado:\n{clean_code}")
 
 else:
-    st.info("👋 Sube tu archivo Excel/CSV para activar el motor de inteligencia de negocios.")
+    st.info("👋 Sube tu archivo para iniciar el análisis blindado.")
+
+
+# ==========================================
+# 7. ZONA DE PRUEBAS INTERNAS (SIN API KEY)
+# ==========================================
+# Descomenta estas líneas para probar si el saneamiento de datos
+# y el mapeo de columnas funcionan sin llamar a Google.
+
+# if st.checkbox("🛠️ Activar Modo Pruebas Internas (Sin API)"):
+#     st.warning("Modo de pruebas activado. Sube un archivo para ver si el saneamiento funciona.")
+#     if uploaded_file:
+#         st.write("--- INICIO DIAGNÓSTICO ---")
+#         st.write(f"Tipo detectado: {tipo_reporte}")
+#         st.write("Columnas originales:", df.columns.tolist())
+#         try:
+#             # Simulamos la preparación
+#             if tipo_reporte == "Licitaciones":
+#                 df['Monto_Total_Estimado'] = pd.to_numeric(df['Cantidad Adjudicada'], errors='coerce').fillna(0) * pd.to_numeric(df['Monto Unitario'], errors='coerce').fillna(0)
+#                 st.success(f"Cálculo de Monto Total exitoso. Suma total: ${df['Monto_Total_Estimado'].sum():,.0f}")
+#                 st.write("Mapa de columnas propuesto:", {
+#                     'MONTO': 'Monto_Total_Estimado', 'PROVEEDOR': 'Nombre Proveedor'
+#                 })
+#             elif tipo_reporte == "Convenio Marco":
+#                 df['Precio Oferta'] = pd.to_numeric(df['Precio Oferta'], errors='coerce').fillna(0)
+#                 st.success(f"Limpieza de Precio Oferta exitosa. Promedio: ${df['Precio Oferta'].mean():,.0f}")
+#         except Exception as e:
+#             st.error(f"Falló el diagnóstico: {e}")
+#         st.write("--- FIN DIAGNÓSTICO ---")
