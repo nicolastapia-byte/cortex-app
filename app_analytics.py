@@ -54,17 +54,12 @@ if "messages" not in st.session_state:
 # ==========================================
 def detectar_tipo_reporte(columnas):
     cols_str = " ".join(columnas).lower()
-    
-    # 1. Detectar Órdenes de Compra (Detalle OC) - EL 4TO CEREBRO
     if "nombreprovider" in cols_str and "totallinea" in cols_str:
         return "Órdenes de Compra"
-    # 2. Detectar Compras Ágiles (Postulaciones)
     elif "estado compra ágil" in cols_str or "estado compra agil" in cols_str:
         return "Compras Ágiles"
-    # 3. Detectar Licitaciones Históricas
     elif "estado licitación" in cols_str or "estado licitacion" in cols_str:
         return "Licitaciones"
-    # 4. Detectar Convenio Marco
     elif "fecha lectura" in cols_str or "precio sin oferta" in cols_str:
         return "Convenio Marco"
     else:
@@ -109,7 +104,6 @@ if uploaded_file:
         col_map = {}
         cols_detalle_prod = []
 
-        # --- A. Licitaciones y Compras Ágiles (Postulaciones) ---
         if tipo_reporte in ["Licitaciones", "Compras Ágiles"]:
             if 'Cantidad Adjudicada' in df.columns: df['Cantidad Adjudicada'] = limpiar_numeros(df['Cantidad Adjudicada'])
             if 'Monto Unitario' in df.columns: df['Monto Unitario'] = limpiar_numeros(df['Monto Unitario'])
@@ -126,7 +120,6 @@ if uploaded_file:
             }
             cols_detalle_prod = ['Nombre Producto', 'Descripcion Producto']
 
-        # --- B. Órdenes de Compra (EL NUEVO 4TO MUNDO) ---
         elif tipo_reporte == "Órdenes de Compra":
             if 'TotalLinea' in df.columns: df['TotalLinea'] = limpiar_numeros(df['TotalLinea'])
             if 'FechaAceptacion' in df.columns: df['Fecha_Datetime'] = limpiar_fechas(df['FechaAceptacion'])
@@ -134,13 +127,12 @@ if uploaded_file:
             col_map = {
                 'MONTO_REAL': 'TotalLinea',
                 'PROVEEDOR_CLAVE': 'NombreProvider',
-                'COMPRADOR_CLAVE': 'NombreUnidad', # Mejor que NombreOrganismo que a veces viene nulo aquí
+                'COMPRADOR_CLAVE': 'NombreUnidad', 
                 'FECHA_CLAVE': 'Fecha_Datetime',
                 'ID_CLAVE': 'Codigo'
             }
             cols_detalle_prod = ['Producto', 'EspecificacionProveedor']
 
-        # --- C. Convenio Marco ---
         elif tipo_reporte == "Convenio Marco":
             if 'Precio Oferta' in df.columns: df['Precio Oferta'] = limpiar_numeros(df['Precio Oferta'])
             if 'Fecha Lectura' in df.columns: df['Fecha_Datetime'] = limpiar_fechas(df['Fecha Lectura'])
@@ -154,7 +146,6 @@ if uploaded_file:
             }
             cols_detalle_prod = ['Nombre Producto', 'Formato']
         
-        # Filtro final: asegurar que las columnas mapeadas realmente existan
         col_map_final = {k: v for k, v in col_map.items() if v in df.columns}
     
     st.success(f"✅ Archivo blindado y listo. **{len(df):,} registros procesados.**")
@@ -166,7 +157,6 @@ if uploaded_file:
     st.subheader("🎯 Radar de Oportunidades: Océanos Azules")
     st.info("💡 **Inteligencia de Mercado:** Cortex escanea buscando negocios donde la competencia es mínima o nula (Monopolios).")
     
-    # 🧠 El Ojo de Dios ahora usa directamente la Piedra Rosetta para no equivocarse jamás
     col_id = col_map_final.get('ID_CLAVE')
     col_prov = col_map_final.get('PROVEEDOR_CLAVE')
     
@@ -188,7 +178,6 @@ if uploaded_file:
             col_monto = col_map_final.get('MONTO_REAL')
             col_org = col_map_final.get('COMPRADOR_CLAVE')
             
-            # Recuperar dinámicamente el nombre del producto según el reporte
             col_prod_base = cols_detalle_prod[0] if len(cols_detalle_prod) > 0 else None
             col_prod_desc = cols_detalle_prod[1] if len(cols_detalle_prod) > 1 else None
             
@@ -254,7 +243,7 @@ if uploaded_file:
         with st.chat_message("assistant"):
             with st.spinner(f"Cortex procesando modelo '{tipo_reporte}' con Gemini 2.5 Flash..."):
                 
-                # --- EL CEREBRO BLINDADO CON PIEDRA ROSETTA ---
+                # --- EL CEREBRO BLINDADO ANTI-ALUCINACIONES ---
                 system_instruction = f"""
                 Eres Cortex, Director Comercial de SmartOffer.
                 Estás analizando un reporte del tipo: '{tipo_reporte}'.
@@ -271,8 +260,9 @@ if uploaded_file:
                 4. USO ESTRICTO DEL MAPA: Si necesitas el monto, asume que es la columna `col_map_final['MONTO_REAL']`. Si necesitas proveedor, usa `col_map_final['PROVEEDOR_CLAVE']`. 
                 5. Devuelve SOLO código Python puro. SIN markdown (sin ```python).
                 6. Maneja Nulos: Usa `.fillna(0)` antes de agrupar o sumar.
-                7. Informes: Si piden "Informe", calcula los KPIs y usa f-strings para guardar en 'resultado' un texto ejecutivo Markdown.
-                8. PROHIBIDO usar `df.to_markdown()`. Si necesitas mostrar tabla, asigna el DataFrame a la variable `resultado` (ej: `resultado = df_detalle`).
+                7. ANTI-ALUCINACIONES DE DATOS: ¡ESTÁ ESTRICTAMENTE PROHIBIDO inventar nombres de productos (como "ProductoZ"), proveedores u organismos de ejemplo! TODO texto que generes en un informe debe extraerse matemáticamente de `df` y ser insertado dinámicamente usando f-strings y variables (ejemplo: `top_producto = df.groupby('...').sum().idxmax()`).
+                8. Informes: Calcula dinámicamente los KPIs reales con Pandas y usa f-strings para guardar en 'resultado' el texto Markdown real.
+                9. PROHIBIDO usar `df.to_markdown()`. Si necesitas mostrar tabla, asigna el DataFrame a la variable `resultado` (ej: `resultado = df_detalle`).
                 """
                 
                 clean_code = "No se pudo generar código. Posible error de conexión con la IA o límite de API."
