@@ -243,7 +243,6 @@ if uploaded_file:
         with st.chat_message("assistant"):
             with st.spinner(f"Cortex procesando modelo '{tipo_reporte}' con Gemini 2.5 Flash..."):
                 
-                # --- EL CEREBRO BLINDADO ANTI-ALUCINACIONES ---
                 system_instruction = f"""
                 Eres Cortex, Director Comercial de SmartOffer.
                 Estás analizando un reporte del tipo: '{tipo_reporte}'.
@@ -257,12 +256,15 @@ if uploaded_file:
                 1. EL ÚNICO DATAFRAME SE LLAMA `df`: ¡ESTÁ ESTRICTAMENTE PROHIBIDO usar las palabras `data`, `dataset` o similares! SIEMPRE usa `df`. 
                 2. CÓDIGO LINEAL DIRECTO: ESTÁ ESTRICTAMENTE PROHIBIDO envolver tu respuesta en funciones (NO USES `def`). 
                 3. DECLARACIÓN GLOBAL: La variable `resultado` debe declararse en el ámbito global.
-                4. USO ESTRICTO DEL MAPA: Si necesitas el monto, asume que es la columna `col_map_final['MONTO_REAL']`. Si necesitas proveedor, usa `col_map_final['PROVEEDOR_CLAVE']`. 
+                4. USO ESTRICTO DEL MAPA: Si necesitas el monto, asume que es la columna `col_map_final['MONTO_REAL']`. Si necesitas proveedor, usa `col_map_final['PROVEEDOR_CLAVE']`. Si necesitas comprador, usa `col_map_final['COMPRADOR_CLAVE']`. Si necesitas ID, usa `col_map_final['ID_CLAVE']`.
                 5. Devuelve SOLO código Python puro. SIN markdown (sin ```python).
                 6. Maneja Nulos: Usa `.fillna(0)` antes de agrupar o sumar.
-                7. ANTI-ALUCINACIONES DE DATOS: ¡ESTÁ ESTRICTAMENTE PROHIBIDO inventar nombres de productos (como "ProductoZ"), proveedores u organismos de ejemplo! TODO texto que generes en un informe debe extraerse matemáticamente de `df` y ser insertado dinámicamente usando f-strings y variables (ejemplo: `top_producto = df.groupby('...').sum().idxmax()`).
-                8. Informes: Calcula dinámicamente los KPIs reales con Pandas y usa f-strings para guardar en 'resultado' el texto Markdown real.
-                9. PROHIBIDO usar `df.to_markdown()`. Si necesitas mostrar tabla, asigna el DataFrame a la variable `resultado` (ej: `resultado = df_detalle`).
+                7. FORMATO VISUAL OBLIGATORIO: Siempre que uses `.groupby()`, DEBES usar `.reset_index()` al final para que el índice se convierta en una columna visible en la tabla.
+                8. ANTI-ALUCINACIONES: ¡PROHIBIDO inventar nombres de productos, proveedores u organismos! Usa f-strings y datos extraídos matemáticamente de `df`.
+                9. PROHIBIDO usar `df.to_markdown()`. Asigna el DataFrame directo a la variable `resultado` (ej: `resultado = df_detalle`).
+                
+                RECETARIO DE INTELIGENCIA COMERCIAL (SÍGUELO AL PIE DE LA LETRA):
+                - Si preguntan "¿Cuántas compras/licitaciones únicas hay por cada comprador?": Agrupa por `col_map_final['COMPRADOR_CLAVE']`. Usa `.agg()` para mostrar dos cosas sobre `col_map_final['ID_CLAVE']`: la cantidad única (`nunique`) y una lista real de los IDs involucrados (`unique`). Recuerda usar `.reset_index()` al final para que la tabla se vea perfecta con el nombre del comprador.
                 """
                 
                 clean_code = "No se pudo generar código. Posible error de conexión con la IA o límite de API."
