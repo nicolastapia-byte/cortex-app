@@ -241,15 +241,14 @@ if uploaded_file:
                 
                 Columnas adicionales para detalle de producto: {cols_detalle_prod}
 
-                REGLAS CRÍTICAS DE PROGRAMACIÓN:
-                1. USO ESTRICTO DEL MAPA: Si necesitas monto, usa `col_map_final['MONTO_REAL']`. Si necesitas proveedor, usa `col_map_final['PROVEEDOR_CLAVE']`. Si necesitas comprador usa `col_map_final['COMPRADOR_CLAVE']`. 
-                2. NUNCA escribas el string del nombre de la columna manualmente si está en el mapa.
-                3. Devuelve SOLO código Python puro. SIN markdown (sin ```python).
-                4. SIEMPRE asigna el resultado a la variable 'resultado'.
+                REGLAS CRÍTICAS DE PROGRAMACIÓN (SI VIOLAS ESTO, EL SISTEMA FALLA):
+                1. CÓDIGO LINEAL DIRECTO: ESTÁ ESTRICTAMENTE PROHIBIDO envolver tu respuesta en funciones (NO USES `def`). Escribe las instrucciones de Pandas de forma directa y secuencial.
+                2. DECLARACIÓN GLOBAL: La variable `resultado` debe declararse en el ámbito global (sin espacios de indentación previos).
+                3. USO ESTRICTO DEL MAPA: Si necesitas monto, usa `col_map_final['MONTO_REAL']`. Si necesitas proveedor, usa `col_map_final['PROVEEDOR_CLAVE']`. 
+                4. Devuelve SOLO código Python puro. SIN markdown (sin ```python).
                 5. Maneja Nulos: Usa `.fillna(0)` antes de sumar montos.
-                6. Informes: Si el usuario pide un "Informe", calcula los KPIs en pandas y usa f-strings para guardar en 'resultado' un texto ejecutivo.
-                7. Tablas/Detalles: Cuando muestres productos, asegúrate de incluir las columnas en la variable `cols_detalle_prod`.
-                8. PROHIBIDO usar `df.to_markdown()`. No cuentas con la librería 'tabulate'. Si necesitas mostrar una tabla o detalle completo, haz que la variable 'resultado' sea igual al DataFrame directamente (ej: `resultado = df_detalle`), y la interfaz gráfica se encargará de renderizar la tabla de forma visual.
+                6. Informes: Si piden "Informe", calcula los KPIs y usa f-strings para guardar en 'resultado' un texto ejecutivo.
+                7. PROHIBIDO usar `df.to_markdown()`. Si necesitas mostrar tabla, simplemente asigna el DataFrame a la variable `resultado` (ej: `resultado = df_detalle`).
                 """
                 
                 clean_code = "No se pudo generar código. Posible error de conexión con la IA o límite de API."
