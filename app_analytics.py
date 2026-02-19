@@ -120,21 +120,16 @@ if uploaded_file:
 
         st.markdown("---")
         
-        # =========================================================
-        # 🦄 SECCIÓN ESTRATÉGICA: UNICORNIOS Y OCÉANOS AZULES
-        # =========================================================
+        # --- SECCIÓN UNICORNIOS (OCÉANOS AZULES) ---
         st.subheader("🎯 Radar de Oportunidades: Océanos Azules")
-        st.info("💡 **Inteligencia de Mercado:** Cortex ha detectado licitaciones donde la competencia es mínima o nula. Estas son oportunidades clave para entrar con altos márgenes.")
+        st.info("💡 **Inteligencia de Mercado:** Cortex ha detectado licitaciones donde la competencia es mínima o nula. Oportunidades clave para altos márgenes.")
         
         if 'CodigoExterno' in df.columns and 'Nombre Proveedor' in df.columns:
-            # Contar cuántos proveedores distintos ganaron en cada licitación
             competencia = df.groupby('CodigoExterno')['Nombre Proveedor'].nunique().reset_index()
             competencia.columns = ['CodigoExterno', 'Num_Competidores']
             
-            # Unir el conteo con los datos originales (tomamos la primera fila de cada licitación para la tabla)
             df_unicos = df.drop_duplicates(subset=['CodigoExterno']).merge(competencia, on='CodigoExterno')
             
-            # Filtros de Océanos Azules
             unicornios_df = df_unicos[df_unicos['Num_Competidores'] == 1]
             baja_comp_df = df_unicos[df_unicos['Num_Competidores'] == 2]
             
@@ -142,14 +137,10 @@ if uploaded_file:
             col_u1.metric("🦄 Licitaciones Unicornio (1 solo Proveedor)", len(unicornios_df))
             col_u2.metric("🛡️ Baja Competencia (Solo 2 Proveedores)", len(baja_comp_df))
             
-            # Mostrar Tabla de Unicornios
             if not unicornios_df.empty:
                 st.markdown("#### 🔍 Detalle de Licitaciones Unicornio")
-                # Detectar columna de ubicación (Región o el Organismo que compra)
                 col_ubicacion = 'Región' if 'Región' in df.columns else 'Nombre Organismo'
-                
                 columnas_mostrar = ['CodigoExterno', col_ubicacion, 'Nombre Producto', 'Nombre Proveedor', 'Monto_Total_Estimado']
-                # Filtrar solo las columnas que realmente existen
                 columnas_mostrar = [c for c in columnas_mostrar if c in unicornios_df.columns]
                 
                 tabla_mostrar = unicornios_df[columnas_mostrar].sort_values(by='Monto_Total_Estimado', ascending=False)
@@ -164,7 +155,7 @@ if uploaded_file:
     st.markdown("---")
 
     # ==========================================
-    # 6. MOTOR RAG: AGENTE IA (CHAT CON DATOS)
+    # 6. MOTOR RAG: AGENTE IA (CHAT COMERCIAL)
     # ==========================================
     st.subheader(f"💬 Analista Inteligente ({tipo_reporte})")
     
@@ -172,25 +163,27 @@ if uploaded_file:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    if prompt := st.chat_input("Ej: Muéstrame un gráfico de los productos adjudicados a Farmalatina..."):
+    if prompt := st.chat_input("Ej: Genera un informe comercial de FARMALATINA LTDA..."):
         
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner("Cortex procesando tu solicitud..."):
-                system_instruction = f"""
-                Eres Cortex, Analista de Datos experto de SmartOffer.
-                Dataset actual: '{tipo_reporte}'.
-                Columnas exactas del DataFrame 'df': {df.columns.tolist()}.
+            with st.spinner("Cortex procesando estrategia y datos..."):
                 
+                # --- EL NUEVO CEREBRO COMERCIAL DE CORTEX ---
+                system_instruction = f"""
+                Eres Cortex, el Director Comercial e Inteligencia de Negocios de SmartOffer.
+                Dataset actual: '{tipo_reporte}'. Columnas: {df.columns.tolist()}.
+
                 REGLAS CRÍTICAS DE PROGRAMACIÓN:
-                1. Devuelve ÚNICA Y EXCLUSIVAMENTE código Python válido. Sin texto, sin explicaciones, sin markdown (NO ```python).
-                2. SIEMPRE asigna el resultado final a una variable llamada exactamente 'resultado'.
-                3. 'resultado' DEBE ser un DataFrame, una Serie, un número o un string.
-                4. Si piden tendencia o gráficos, agrupa los datos y asigna ese DataFrame a 'resultado'.
-                5. Para licitaciones, si piden montos en dinero, usa la columna calculada 'Monto_Total_Estimado'.
+                1. Devuelve SOLO código Python válido (sin formato markdown ```python ni nada extra). 
+                2. SIEMPRE asigna el resultado final a la variable 'resultado'.
+                3. Si el usuario pide un DATO, GRÁFICO o TABLA: 'resultado' debe ser un DataFrame o Serie de Pandas.
+                4. Si el usuario pide un "INFORME", "RESUMEN" o "ANÁLISIS": Escribe código Pandas para calcular KPIs, y luego construye un string en formato Markdown con un resumen ejecutivo para gerencia. Asigna ese string final a 'resultado'.
+                5. Para Licitaciones, usa SIEMPRE 'Monto_Total_Estimado' para volumen de dinero.
+                6. Maneja nulos con fillna(0) o dropna() antes de sumar o calcular.
                 """
                 
                 try:
@@ -205,21 +198,33 @@ if uploaded_file:
                         
                     resultado = scope["resultado"]
 
-                    st.markdown("**Respuesta:**")
-                    st.write(resultado)
+                    # --- RENDERIZADO INTELIGENTE (Texto vs Gráficos) ---
+                    st.markdown("**Análisis de Cortex:**")
                     
-                    if isinstance(resultado, (pd.Series, pd.DataFrame)):
+                    if isinstance(resultado, str):
+                        # Si es un Informe Ejecutivo (Texto Markdown)
+                        st.markdown(resultado)
+                        
+                    elif isinstance(resultado, (pd.Series, pd.DataFrame)):
+                        # Si es un cálculo de datos puros, mostrar tabla y posible gráfico
+                        st.write(resultado)
                         prompt_lower = prompt.lower()
-                        if any(word in prompt_lower for word in ["tendencia", "evolución", "tiempo", "histórico", "fecha"]):
-                            st.line_chart(resultado)
-                        else:
+                        
+                        if any(word in prompt_lower for word in ["tendencia", "evolución", "tiempo", "histórico", "fecha", "grafico", "gráfico"]):
+                            try:
+                                st.line_chart(resultado)
+                            except:
+                                st.bar_chart(resultado)
+                        elif any(word in prompt_lower for word in ["top", "market share", "comparativa", "quien", "participacion", "ranking"]):
                             st.bar_chart(resultado)
+                    else:
+                        st.write(resultado)
                             
-                    st.session_state.messages.append({"role": "assistant", "content": "Análisis completado y visualizado correctamente."})
+                    st.session_state.messages.append({"role": "assistant", "content": "Análisis estratégico completado."})
                 
                 except Exception as e:
-                    st.error("⚠️ Hubo un error procesando esa consulta. Intenta ser más específico con los nombres de las columnas o proveedores.")
-                    print(f"Error AI: {e}\nTraza: {traceback.format_exc()}")
+                    st.error("⚠️ Hubo un error procesando tu solicitud estratégica. Intenta ser un poco más específico con los nombres.")
+                    # print(f"Error AI: {e}\nTraza: {traceback.format_exc()}") # Oculto en prod
 
 else:
-    st.info("👋 ¡Hola! Soy Cortex Analytics de SmartOffer. Sube un archivo de Mercado Público o Convenios Marco en el menú lateral para iniciar el escáner.")
+    st.info("👋 ¡Hola! Soy Cortex Analytics de SmartOffer. Sube un archivo de Mercado Público o Convenios Marco en el menú lateral para iniciar el escáner comercial.")
