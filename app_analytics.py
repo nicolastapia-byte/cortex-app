@@ -1,302 +1,187 @@
 import streamlit as st
-import google.generativeai as genai
 import pandas as pd
-import altair as alt
-import io
+import google.generativeai as genai
+import traceback
 
-# --- 1. CONFIGURACIÓN ---
-st.set_page_config(page_title="Sentinela - Analítica Comercial", page_icon="📊", layout="wide")
+# ==========================================
+# 1. CONFIGURACIÓN DE PÁGINA Y ESTÉTICA
+# ==========================================
+st.set_page_config(page_title="Cortex Analytics: Suite Inteligente", page_icon="🤖", layout="wide")
 
-# --- CSS PRO ---
 st.markdown("""
     <style>
-    .stApp { background-color: #0E1117; color: #FAFAFA; }
-    h1 { color: #4A90E2; font-family: 'Helvetica Neue', sans-serif; font-weight: 700; }
-    div[data-testid="stMetricValue"] { font-size: 24px !important; color: #00D4FF; font-weight: bold; }
-    .robot-container { display: flex; justify-content: center; animation: float-breathe 4s infinite; padding-bottom: 20px; }
-    .robot-img { width: 100px; filter: drop-shadow(0 0 15px rgba(0, 212, 255, 0.6)); }
-    @keyframes float-breathe { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
-    .chat-box { background-color: #1E2329; padding: 20px; border-radius: 10px; border-left: 5px solid #00D4FF; margin-top: 15px; color: #E0E0E0; }
-    .user-msg { text-align: right; color: #A0A0A0; font-style: italic; margin-bottom: 5px; }
-    .bot-msg { text-align: left; color: #E0E0E0; margin-bottom: 15px; border-bottom: 1px solid #333; padding-bottom: 10px; }
-    .stButton>button { background: linear-gradient(90deg, #2E5CB8 0%, #4A00E0 100%); color: white; border-radius: 8px; border: none; padding: 0.6rem 1.5rem; font-weight: 600; }
+    .stApp { background-color: #0e1117; color: #e0e0e0; }
+    .stSidebar { background-color: #161b22; border-right: 1px solid #30363d; }
+    h1 { color: #00d4ff; font-family: 'Inter', sans-serif; font-weight: 800; }
+    .stChatMessage { border-radius: 15px; border: 1px solid #30363d; margin-bottom: 10px; }
+    div[data-testid="stMetricValue"] { color: #00d4ff; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- SIDEBAR ---
-with st.sidebar:
-    st.markdown("""<div class="robot-container"><img src="https://cdn-icons-png.flaticon.com/512/4712/4712035.png" class="robot-img"></div>""", unsafe_allow_html=True)
-    st.title("Cortex Analytics")
-    st.info("Sube tu histórico (OC, Licitaciones o Cotizaciones).")
-    
-    # CONEXIÓN SEGURA
-    if "GOOGLE_API_KEY" in st.secrets:
-        try:
-            genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-            st.success("✅ Sistema Conectado")
-        except Exception as e:
-            st.error(f"Error de Llave: {e}")
-    else:
-        st.error("⚠️ Falta API Key en secrets.toml")
-        st.stop()
+# ==========================================
+# 2. INICIALIZACIÓN DE IA Y ESTADOS
+# ==========================================
+try:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    model = genai.GenerativeModel('gemini-1.5-flash')
+except Exception as e:
+    st.error("❌ Error Crítico: No se encontró GEMINI_API_KEY en st.secrets.")
+    st.stop()
 
-    if st.button("🗑️ Reiniciar Memoria"):
-        st.session_state.history = []
-        st.session_state.entidad_activa = None
+# Inicializar memoria del chat
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# ==========================================
+# 3. MOTOR DE RUTEO INTELIGENTE
+# ==========================================
+def detectar_tipo_reporte(columnas):
+    cols_str = " ".join(columnas).lower()
+    if "fecha lectura" in cols_str or "precio sin oferta" in cols_str:
+        return "Convenio Marco"
+    elif "licitación" in cols_str or "licitacion" in cols_str or "adjudicacion" in cols_str:
+        return "Licitaciones"
+    elif "orden de compra" in cols_str or "comprador" in cols_str:
+        return "Compras Ágiles"
+    else:
+        return "Análisis General"
+
+# ==========================================
+# 4. INTERFAZ: SIDEBAR Y CARGA
+# ==========================================
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/4712/4712139.png", width=80)
+    st.title("Cortex Core")
+    st.markdown("Sube tu reporte descargado del portal (Mercado Público / Convenios).")
+    uploaded_file = st.file_uploader("Cargar Archivo", type=['xlsx', 'csv'])
+    
+    if st.button("Limpiar Historial de Chat"):
+        st.session_state.messages = []
         st.rerun()
 
-# --- MEMORIA ---
-if "history" not in st.session_state: st.session_state.history = []
-if "entidad_activa" not in st.session_state: st.session_state.entidad_activa = None
-
-# --- MOTOR DE BÚSQUEDA NUCLEAR (V27 - CON FILTRO DE RUIDO) ---
-def normalizar_nuclear(texto):
-    if not isinstance(texto, str): return ""
-    return texto.lower().replace(" ", "").replace(".", "").replace(",", "").replace("-", "").replace("_", "").replace("/", "")
-
-def buscar_nuclear(df, col_prov, col_org, query):
-    log = []
-    # LISTA DE STOP WORDS AMPLIADA PARA EVITAR FALSOS POSITIVOS CON "DETALLE", "PRODUCTOS", ETC.
-    stop_words = ["que", "quien", "dame", "el", "la", "detalle", "oc", "orden", "compra", "producto", "vende", "de", "lo", "los", "las", "dime", "codigo", "precio", "cuanto", "valor", "es", "son", "sobre", "del", "al", "en", "para", "por", "sus", "mis", "mas", "menos", "mejor", "peor", "lista", "tabla", "ver", "mostrar", "quiero", "saber"]
-    
-    keywords = [w for w in query.split() if w.lower() not in stop_words and len(w) > 2]
-    
-    if not keywords: 
-        return None, None, ["Query solo contenía palabras comunes (Stop Words)."]
-    
-    query_slug = normalizar_nuclear("".join(keywords))
-    log.append(f"Slug buscado: '{query_slug}'")
-
-    cols_prioridad = [c for c in [col_prov, col_org] if c]
-    cols_extra = [c for c in df.select_dtypes(include=['object']).columns if c not in cols_prioridad]
-    todas_cols = cols_prioridad + cols_extra
-    
-    for col in todas_cols:
-        valores_unicos = df[col].dropna().unique()
-        for val in valores_unicos:
-            val_str = str(val)
-            val_slug = normalizar_nuclear(val_str)
-            if query_slug in val_slug:
-                log.append(f"✅ MATCH: '{val}' en '{col}'")
-                return val, col, log
-                
-    log.append("❌ Sin coincidencias.")
-    return None, None, log
-
-# --- FUNCIONES BASE ---
-def detectar_columna(df, posibles, excluir=[]):
-    for p in posibles:
-        for col in df.columns:
-            if any(exc.lower() in col.lower() for exc in excluir): continue
-            if p.lower() in col.lower() and df[col].notna().sum() > 0: return col
-    return None
-
-def limpiar_monto(serie):
-    if serie.dtype == object: return serie.astype(str).str.replace(r'[$.]', '', regex=True).astype(float)
-    return serie
-
-# Geo
-ORDEN_CHILE = ["Arica y Parinacota", "Tarapacá", "Antofagasta", "Atacama", "Coquimbo", "Valparaíso", "Metropolitana", "O'Higgins", "Maule", "Ñuble", "Biobío", "Araucanía", "Los Ríos", "Los Lagos", "Aysén", "Magallanes", "Sin Región"]
-def normalizar_region(nombre):
-    if not isinstance(nombre, str): return "Sin Región"
-    n = nombre.lower()
-    if 'arica' in n: return "Arica y Parinacota"
-    if 'tarapa' in n: return "Tarapacá"
-    if 'antofa' in n: return "Antofagasta"
-    if 'atacama' in n: return "Atacama"
-    if 'coquimbo' in n: return "Coquimbo"
-    if 'valpara' in n: return "Valparaíso"
-    if 'metrop' in n or 'santiago' in n: return "Metropolitana"
-    if 'higgins' in n: return "O'Higgins"
-    if 'maule' in n: return "Maule"
-    if 'uble' in n: return "Ñuble"
-    if 'biob' in n: return "Biobío"
-    if 'araucan' in n: return "Araucanía"
-    if 'rios' in n: return "Los Ríos"
-    if 'lagos' in n: return "Los Lagos"
-    if 'aysen' in n: return "Aysén"
-    if 'magallanes' in n: return "Magallanes"
-    return "Otras"
-
-# --- APP PRINCIPAL ---
-st.title("📊 Tablero de Comando Comercial")
-uploaded_file = st.file_uploader("📂 Cargar Datos (Excel/CSV)", type=["xlsx", "csv"])
-
+# ==========================================
+# 5. NÚCLEO DE PROCESAMIENTO
+# ==========================================
 if uploaded_file:
+    # --- A. Lectura Segura ---
     try:
-        # CARGA
-        if uploaded_file.name.endswith('.csv'):
-            try: df = pd.read_csv(uploaded_file, encoding='utf-8')
-            except: df = pd.read_csv(uploaded_file, encoding='latin-1')
-        else: df = pd.read_excel(uploaded_file)
-        
-        # DETECCIÓN
-        col_monto = detectar_columna(df, ['TotalNeto', 'TotalLinea', 'Monto Total', 'Total'])
-        col_monto_uni = detectar_columna(df, ['Monto Unitario', 'Precio Unitario', 'PrecioNeto', 'Precio'])
-        col_org = detectar_columna(df, ['Nombre Organismo', 'NombreOrganismo', 'NombreUnidad', 'Unidad'], excluir=['Rut'])
-        col_reg = detectar_columna(df, ['RegionUnidad', 'Region'])
-        col_prod = detectar_columna(df, ['Nombre Producto', 'Producto', 'NombreProducto', 'Descripcion'])
-        col_prov = detectar_columna(df, ['Nombre Proveedor', 'NombreProvider', 'Proveedor', 'Vendedor', 'Empresa'], excluir=['Rut', 'Codigo'])
-        col_cant = detectar_columna(df, ['Cantidad Adjudicada', 'Cantidad', 'Cant'])
-        col_id = detectar_columna(df, ['CodigoExterno', 'Codigo Licitación', 'Orden de Compra', 'Codigo', 'ID', 'OC'])
-        col_fecha = detectar_columna(df, ['Fecha Adjudicación', 'FechaCreacion', 'Fecha'])
-
-        # MONTOS
-        if col_monto: df['Monto_Clean'] = limpiar_monto(df[col_monto])
-        elif col_monto_uni and col_cant: df['Monto_Clean'] = limpiar_monto(df[col_monto_uni]) * pd.to_numeric(df[col_cant], errors='coerce').fillna(1)
-        elif col_monto_uni: df['Monto_Clean'] = limpiar_monto(df[col_monto_uni])
-        else: df['Monto_Clean'] = 0
-            
-        if col_monto_uni: df['Precio_Clean'] = limpiar_monto(df[col_monto_uni])
-        else: df['Precio_Clean'] = 0
-            
-        st.divider()
-        
-        # KPI
-        k1, k2, k3, k4 = st.columns(4)
-        k1.metric("💰 Mercado Total", f"${df['Monto_Clean'].sum():,.0f}")
-        k2.metric("🎫 Ticket Promedio", f"${df['Monto_Clean'].mean():,.0f}")
-        k3.metric("📄 Registros", f"{len(df):,}")
-        top_lider = df.groupby(col_prov)['Monto_Clean'].sum().idxmax() if col_prov else "N/A"
-        k4.metric("🏆 Líder", f"{str(top_lider)[:15]}..")
-        st.markdown("---")
-
-        # GRÁFICOS
-        c1, c2 = st.columns(2)
-        with c1:
-            st.subheader("🏛️ Top Compradores")
-            if col_org:
-                d = df.groupby(col_org)['Monto_Clean'].sum().reset_index().sort_values('Monto_Clean', ascending=False).head(10)
-                st.altair_chart(alt.Chart(d).mark_bar(cornerRadius=5).encode(
-                    x=alt.X('Monto_Clean', title='Monto ($)'), y=alt.Y(col_org, sort='-x', title=''), color=alt.value('#FF6B6B'), tooltip=[col_org, 'Monto_Clean']
-                ).properties(height=300), use_container_width=True)
-        with c2:
-            st.subheader("🏢 Top Competencia")
-            if col_prov:
-                d = df.groupby(col_prov)['Monto_Clean'].sum().reset_index().sort_values('Monto_Clean', ascending=False).head(10)
-                st.altair_chart(alt.Chart(d).mark_bar(cornerRadius=5).encode(
-                    x=alt.X('Monto_Clean', title='Monto ($)'), y=alt.Y(col_prov, sort='-x', title=''), color=alt.value('#4ECDC4'), tooltip=[col_prov, 'Monto_Clean']
-                ).properties(height=300), use_container_width=True)
-
-        st.markdown("---")
-        
-        # GEO Y PRODUCTOS
-        c3, c4 = st.columns([1, 1])
-        with c3:
-            st.subheader("📍 Distribución Geográfica")
-            if col_reg:
-                df['Region_Norm'] = df[col_reg].apply(normalizar_region)
-                d_geo = df.groupby('Region_Norm')['Monto_Clean'].sum().reset_index()
-                base = alt.Chart(d_geo).encode(y=alt.Y('Region_Norm', sort=ORDEN_CHILE, title=None), x=alt.X('Monto_Clean', title='Monto ($)'), tooltip=['Region_Norm', 'Monto_Clean'])
-                rule = base.mark_rule(color="#525252", opacity=0.6)
-                circle = base.mark_circle(size=200, opacity=1).encode(color=alt.Color('Monto_Clean', scale=alt.Scale(scheme='turbo'), legend=None), size=alt.Size('Monto_Clean', legend=None, scale=alt.Scale(range=[100, 1000])))
-                text = base.mark_text(align='left', dx=10, color="#FAFAFA").encode(text=alt.Text('Monto_Clean', format='$.2s'))
-                st.altair_chart((rule + circle + text).properties(height=500), use_container_width=True)
-            else: st.info("No se detectó columna de Región.")
-
-        with c4:
-            st.subheader("📦 Top 15 Productos")
-            if col_prod:
-                d_prod = df.groupby(col_prod)['Monto_Clean'].sum().reset_index().sort_values('Monto_Clean', ascending=False).head(15)
-                st.altair_chart(alt.Chart(d_prod).mark_bar(cornerRadius=5).encode(
-                    x=alt.X('Monto_Clean', title='Monto ($)'), y=alt.Y(col_prod, sort='-x', title=''), color=alt.value('#4A90E2'), tooltip=[col_prod, 'Monto_Clean']
-                ).properties(height=500), use_container_width=True)
-
-        # --- CHAT ---
-        st.divider()
-        st.subheader("🤖 Cortex Strategic Advisor")
-        
-        # Indicador Visual de Memoria (EL FIX)
-        if st.session_state.entidad_activa:
-            st.info(f"🔵 **Foco Actual:** Conversando sobre **{st.session_state.entidad_activa['nombre']}**")
+        if uploaded_file.name.endswith('csv'):
+            df = pd.read_csv(uploaded_file)
         else:
-            st.info("⚪ **Foco Actual:** Mercado General (Sin selección)")
-
-        for msg in st.session_state.history:
-            role = "user-msg" if msg["role"] == "user" else "bot-msg"
-            icon = "👤" if msg["role"] == "user" else "🤖"
-            st.markdown(f'<div class="{role}">{icon} {msg["content"]}</div>', unsafe_allow_html=True)
-
-        q = st.text_input("Consulta:", placeholder="Ej: ¿Qué vende Wall Ride? ... ¿Precio mínimo?", label_visibility="collapsed")
-        
-        if st.button("⚡ ANALIZAR") and q:
-            st.session_state.history.append({"role": "user", "content": q})
-            
-            with st.spinner("Procesando..."):
-                try:
-                    # 1. BÚSQUEDA NUCLEAR
-                    nuevo_nombre, nueva_col, log_busqueda = buscar_nuclear(df, col_prov, col_org, q)
-                    
-                    with st.expander("🕵️‍♂️ Debug Búsqueda"): st.write(log_busqueda)
-
-                    # --- LÓGICA DE MEMORIA PEGAJOSA (STICKY MEMORY) ---
-                    # Si encontramos alguien nuevo -> CAMBIAMOS
-                    if nuevo_nombre:
-                        st.session_state.entidad_activa = {"nombre": nuevo_nombre, "columna": nueva_col}
-                        msg_sistema = f"✅ NUEVO FOCO: '{nuevo_nombre}'."
-                    
-                    # Si NO encontramos nada nuevo, PERO ya estábamos hablando de alguien -> MANTENEMOS
-                    elif st.session_state.entidad_activa:
-                        msg_sistema = f"🔄 MANTENIENDO FOCO (No se detectó cambio de tema): '{st.session_state.entidad_activa['nombre']}'."
-                    
-                    # Si no hay nada ni antes ni ahora -> MERCADO GENERAL
-                    else:
-                        msg_sistema = "⚠️ BÚSQUEDA GENERAL: No se detectó entidad específica."
-                        st.session_state.entidad_activa = None
-                    # --------------------------------------------------
-
-                    # 2. EXTRACCIÓN DE DATOS
-                    contexto_data = ""
-                    if st.session_state.entidad_activa:
-                        nombre = st.session_state.entidad_activa["nombre"]
-                        col = st.session_state.entidad_activa["columna"]
-                        df_f = df[df[col] == nombre].copy()
-                        total = df_f['Monto_Clean'].sum()
-                        
-                        prods = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).to_string() if col_prod else "N/A"
-                        
-                        txt_precios_unitarios = "No disponible."
-                        if col_monto_uni:
-                            stats = df_f.groupby(col_prod)['Precio_Clean'].agg(['min', 'max', 'mean'])
-                            top_names = df_f.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(10).index
-                            txt_precios_unitarios = stats.loc[top_names].to_string()
-
-                        txt_ocs = ""
-                        keywords_detalle = ["oc", "orden", "codigo", "código", "detalle", "id", "fecha"]
-                        if any(k in q.lower() for k in keywords_detalle) and col_id:
-                            cols = [c for c in [col_fecha, col_id, col_prod, 'Monto_Clean'] if c]
-                            if col_fecha: df_f = df_f.sort_values(col_fecha, ascending=False)
-                            txt_ocs = f"\n[TABLA DETALLE OC]\n{df_f[cols].head(10).to_string(index=False)}"
-
-                        contexto_data = f"ENTIDAD: {nombre}\nTOTAL: ${total:,.0f}\n[PRECIOS UNITARIOS MIN/MAX]\n{txt_precios_unitarios}\n[PRODUCTOS]\n{prods}\n{txt_ocs}"
-                    else:
-                        # Si es mercado general, mostramos el TOP general
-                        contexto_data = f"DATOS GENERALES:\nTop Productos Mercado:\n{df.groupby(col_prod)['Monto_Clean'].sum().sort_values(ascending=False).head(5).to_string() if col_prod else 'N/A'}"
-
-                    # 3. LLM
-                    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                    model = genai.GenerativeModel(next((m for m in models if 'flash' in m), models[0]))
-                    
-                    prompt = f"""
-                    ERES CORTEX.
-                    ESTADO: {msg_sistema}
-                    DATOS DISPONIBLES:
-                    {contexto_data}
-                    PREGUNTA: "{q}"
-                    
-                    INSTRUCCIONES:
-                    1. Si el estado es MANTENIENDO FOCO, responde asumiendo que hablamos de la misma empresa.
-                    2. Si preguntan precios, usa la tabla [PRECIOS UNITARIOS].
-                    3. Si preguntan ventas, usa el TOTAL.
-                    """
-                    
-                    res = model.generate_content(prompt)
-                    st.session_state.history.append({"role": "assistant", "content": res.text})
-                    st.rerun()
-
-                except Exception as e:
-                    if "429" in str(e): st.error("🚦 Recarga API Key.")
-                    else: st.error(f"Error: {e}")
-
+            df = pd.read_excel(uploaded_file)
     except Exception as e:
-        st.error(f"❌ Error archivo: {e}")
+        st.error(f"Error leyendo el archivo: {e}")
+        st.stop()
+
+    # --- B. Detección y Contexto ---
+    tipo_reporte = detectar_tipo_reporte(df.columns.tolist())
+    
+    st.title(f"🤖 Cortex Analytics: Módulo {tipo_reporte}")
+    st.success(f"✅ Archivo analizado exitosamente. **{len(df):,} registros detectados.**")
+    st.markdown("---")
+    
+    # --- C. DASHBOARDS DINÁMICOS ---
+    if tipo_reporte == "Convenio Marco":
+        # Conversión de fecha robusta (maneja múltiples formatos)
+        df['Fecha_Datetime'] = pd.to_datetime(df['Fecha Lectura'], format='mixed', dayfirst=True, errors='coerce')
+        
+        st.subheader("⚡ Radar de Convenio Marco")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("📦 IDs Monitorizados", df.get('ID Producto', pd.Series()).nunique())
+        col2.metric("🏢 Competidores", df.get('Empresa', pd.Series()).nunique())
+        
+        if not df['Fecha_Datetime'].isna().all():
+            ultima_fecha = df['Fecha_Datetime'].max()
+            df_reciente = df[df['Fecha_Datetime'] == ultima_fecha]
+            
+            if 'Precio Oferta' in df.columns:
+                top_5 = df_reciente.nsmallest(5, 'Precio Oferta')[['ID Producto', 'Nombre Producto', 'Región', 'Precio Oferta', 'Empresa']]
+                st.markdown("#### 🏆 Top 5: Oportunidades de Compra Inmediata")
+                st.dataframe(top_5.style.format({"Precio Oferta": "${:,.0f}"}), use_container_width=True, hide_index=True)
+
+    elif tipo_reporte == "Licitaciones":
+        st.subheader("📊 Panel de Estado de Licitaciones")
+        col1, col2 = st.columns(2)
+        col1.metric("📝 Total Postulaciones", len(df))
+        if 'Estado' in df.columns:
+            ganadas = len(df[df['Estado'].astype(str).str.lower().str.contains('ganada|adjudicada', na=False)])
+            col2.metric("✅ Licitaciones Ganadas", ganadas)
+            
+    else: 
+        st.subheader(f"🛒 Panel de {tipo_reporte}")
+        st.dataframe(df.head(5), use_container_width=True)
+
+    st.markdown("---")
+
+    # ==========================================
+    # 6. AGENTE IA: CHAT Y EJECUCIÓN PANDAS
+    # ==========================================
+    st.subheader(f"💬 Analista Inteligente ({tipo_reporte})")
+    
+    # Mostrar historial
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Input del usuario
+    if prompt := st.chat_input("Ej: Muéstrame un gráfico con los productos más vendidos..."):
+        # Guardar y mostrar pregunta
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        with st.chat_message("assistant"):
+            with st.spinner("Cortex procesando tu solicitud..."):
+                # PROMPT BLINDADO
+                system_instruction = f"""
+                Eres Cortex, un analista de BI Senior de SmartOffer.
+                Dataset actual: '{tipo_reporte}'.
+                Columnas exactas del DataFrame 'df': {df.columns.tolist()}.
+                
+                REGLAS CRÍTICAS DE PROGRAMACIÓN:
+                1. Devuelve ÚNICA Y EXCLUSIVAMENTE código Python válido. Cero texto, cero explicaciones, cero markdown de bloques (sin ```python).
+                2. SIEMPRE debes asignar el resultado final a una variable llamada exactamente 'resultado'.
+                3. 'resultado' DEBE ser un DataFrame, una Serie, un número o un string.
+                4. Si te piden un gráfico, tendencia o evolución, haz un 'groupby' o 'pivot_table' y asigna ESE DataFrame a 'resultado'. La app graficará 'resultado' automáticamente.
+                5. Maneja los nulos si vas a sumar o promediar (ej: dropna()).
+                """
+                
+                try:
+                    # 1. Llamar a Gemini
+                    response = model.generate_content([system_instruction, prompt])
+                    clean_code = response.text.replace("```python", "").replace("```", "").strip()
+                    
+                    # 2. Ejecutar Código en Entorno Aislado
+                    scope = {"df": df.copy(), "pd": pd}
+                    exec(clean_code, scope)
+                    
+                    # 3. Extraer el resultado
+                    if "resultado" not in scope:
+                        raise ValueError("El agente IA no generó la variable 'resultado'.")
+                        
+                    resultado = scope["resultado"]
+
+                    # 4. Visualización Inteligente
+                    st.markdown("**Respuesta:**")
+                    st.write(resultado)
+                    
+                    if isinstance(resultado, (pd.Series, pd.DataFrame)):
+                        # Autodetectar si es apto para línea o barras
+                        prompt_lower = prompt.lower()
+                        if any(word in prompt_lower for word in ["tendencia", "evolución", "tiempo", "histórico", "fecha"]):
+                            st.line_chart(resultado)
+                        else:
+                            st.bar_chart(resultado)
+                            
+                    # 5. Guardar en memoria
+                    st.session_state.messages.append({"role": "assistant", "content": "Análisis completado y visualizado."})
+                
+                except Exception as e:
+                    error_msg = f"⚠️ Lo siento, no pude procesar esa consulta. Verifica los nombres de las columnas o intenta ser más específico."
+                    st.error(error_msg)
+                    # Debug en consola para el desarrollador
+                    print(f"Error: {e}\nCódigo generado:\n{clean_code}\nTraceback: {traceback.format_exc()}")
+
+else:
+    # Pantalla de Bienvenida cuando no hay archivo
+    st.info("👋 ¡Hola! Soy Cortex. Sube un archivo de Mercado Público en el menú lateral para empezar a descubrir oportunidades de negocio.")
