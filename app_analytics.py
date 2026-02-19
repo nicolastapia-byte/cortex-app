@@ -41,7 +41,6 @@ if "GEMINI_API_KEY" not in st.secrets:
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    # ⚡ MOTOR ACTUALIZADO A GEMINI 2.5 FLASH ⚡
     model = genai.GenerativeModel('gemini-2.5-flash')
 except Exception as e:
     st.error(f"❌ Error conectando con Gemini: {str(e)}")
@@ -171,7 +170,6 @@ if uploaded_file:
             col_monto = 'Monto_Total_Estimado' if 'Monto_Total_Estimado' in df.columns else next((c for c in df.columns if 'precio oferta' in c.lower() or 'monto' in c.lower()), None)
             col_org = next((c for c in df.columns if 'organismo' in c.lower() or 'comprador' in c.lower() or 'región' in c.lower()), None)
             
-            # Aseguramos mostrar Producto y Descripcion de Producto si existen
             cols_to_show = [c for c in [col_id, col_org, 'Nombre Producto', 'Descripcion Producto', col_prov, col_monto] if c is not None and c in df.columns]
             tabla_mostrar = unicornios_df[cols_to_show]
             
@@ -249,8 +247,9 @@ if uploaded_file:
                 3. Devuelve SOLO código Python puro. SIN markdown (sin ```python).
                 4. SIEMPRE asigna el resultado a la variable 'resultado'.
                 5. Maneja Nulos: Usa `.fillna(0)` antes de sumar montos.
-                6. Informes: Si el usuario pide un "Informe" o "Resumen", calcula los KPIs en pandas y usa f-strings para guardar en 'resultado' un texto ejecutivo en Markdown.
+                6. Informes: Si el usuario pide un "Informe", calcula los KPIs en pandas y usa f-strings para guardar en 'resultado' un texto ejecutivo.
                 7. Tablas/Detalles: Cuando muestres productos, asegúrate de incluir las columnas en la variable `cols_detalle_prod`.
+                8. PROHIBIDO usar `df.to_markdown()`. No cuentas con la librería 'tabulate'. Si necesitas mostrar una tabla o detalle completo, haz que la variable 'resultado' sea igual al DataFrame directamente (ej: `resultado = df_detalle`), y la interfaz gráfica se encargará de renderizar la tabla de forma visual.
                 """
                 
                 clean_code = "No se pudo generar código. Posible error de conexión con la IA o límite de API."
