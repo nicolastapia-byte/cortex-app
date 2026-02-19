@@ -41,7 +41,8 @@ if "GEMINI_API_KEY" not in st.secrets:
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    # ⚡ MOTOR ACTUALIZADO A GEMINI 2.5 FLASH ⚡
+    model = genai.GenerativeModel('gemini-2.5-flash')
 except Exception as e:
     st.error(f"❌ Error conectando con Gemini: {str(e)}")
     st.stop()
@@ -170,6 +171,7 @@ if uploaded_file:
             col_monto = 'Monto_Total_Estimado' if 'Monto_Total_Estimado' in df.columns else next((c for c in df.columns if 'precio oferta' in c.lower() or 'monto' in c.lower()), None)
             col_org = next((c for c in df.columns if 'organismo' in c.lower() or 'comprador' in c.lower() or 'región' in c.lower()), None)
             
+            # Aseguramos mostrar Producto y Descripcion de Producto si existen
             cols_to_show = [c for c in [col_id, col_org, 'Nombre Producto', 'Descripcion Producto', col_prov, col_monto] if c is not None and c in df.columns]
             tabla_mostrar = unicornios_df[cols_to_show]
             
@@ -230,7 +232,7 @@ if uploaded_file:
             st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            with st.spinner(f"Cortex procesando modelo '{tipo_reporte}'..."):
+            with st.spinner(f"Cortex procesando modelo '{tipo_reporte}' con Gemini 2.5 Flash..."):
                 
                 system_instruction = f"""
                 Eres Cortex, Director Comercial de SmartOffer.
@@ -251,8 +253,6 @@ if uploaded_file:
                 7. Tablas/Detalles: Cuando muestres productos, asegúrate de incluir las columnas en la variable `cols_detalle_prod`.
                 """
                 
-                # --- SOLUCIÓN AL ERROR DE NAMERROR ---
-                # Pre-declaramos clean_code por si la llamada a Gemini falla por red o cuota.
                 clean_code = "No se pudo generar código. Posible error de conexión con la IA o límite de API."
                 
                 try:
