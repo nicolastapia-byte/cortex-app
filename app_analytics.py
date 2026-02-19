@@ -253,18 +253,23 @@ if uploaded_file:
                 Columnas adicionales para detalle de producto: {cols_detalle_prod}
 
                 REGLAS CRÍTICAS DE PROGRAMACIÓN (SI VIOLAS ESTO, EL SISTEMA FALLA):
-                1. EL ÚNICO DATAFRAME SE LLAMA `df`: ¡ESTÁ ESTRICTAMENTE PROHIBIDO usar las palabras `data`, `dataset` o similares! SIEMPRE usa `df`. 
-                2. CÓDIGO LINEAL DIRECTO: ESTÁ ESTRICTAMENTE PROHIBIDO envolver tu respuesta en funciones (NO USES `def`). 
+                1. EL ÚNICO DATAFRAME SE LLAMA `df`: ¡PROHIBIDO usar las palabras `data`, `dataset` o similares! SIEMPRE usa `df`. 
+                2. CÓDIGO LINEAL DIRECTO: ESTÁ ESTRICTAMENTE PROHIBIDO usar funciones (NO USES `def`). 
                 3. DECLARACIÓN GLOBAL: La variable `resultado` debe declararse en el ámbito global.
-                4. USO ESTRICTO DEL MAPA: Si necesitas el monto, asume que es la columna `col_map_final['MONTO_REAL']`. Si necesitas proveedor, usa `col_map_final['PROVEEDOR_CLAVE']`. Si necesitas comprador, usa `col_map_final['COMPRADOR_CLAVE']`. Si necesitas ID, usa `col_map_final['ID_CLAVE']`.
+                4. USO ESTRICTO DEL MAPA: Si necesitas el monto, asume que es `col_map_final['MONTO_REAL']`. Proveedor es `col_map_final['PROVEEDOR_CLAVE']`. Comprador es `col_map_final['COMPRADOR_CLAVE']`. ID es `col_map_final['ID_CLAVE']`.
                 5. Devuelve SOLO código Python puro. SIN markdown (sin ```python).
                 6. Maneja Nulos: Usa `.fillna(0)` antes de agrupar o sumar.
-                7. FORMATO VISUAL OBLIGATORIO: Siempre que uses `.groupby()`, DEBES usar `.reset_index()` al final para que el índice se convierta en una columna visible en la tabla.
-                8. ANTI-ALUCINACIONES: ¡PROHIBIDO inventar nombres de productos, proveedores u organismos! Usa f-strings y datos extraídos matemáticamente de `df`.
-                9. PROHIBIDO usar `df.to_markdown()`. Asigna el DataFrame directo a la variable `resultado` (ej: `resultado = df_detalle`).
+                7. FORMATO VISUAL OBLIGATORIO: Siempre que uses `.groupby()`, DEBES usar `.reset_index()` al final.
+                8. ANTI-ALUCINACIONES: ¡PROHIBIDO inventar nombres! Extrae todo matemáticamente de `df`.
+                9. PROHIBIDO usar `df.to_markdown()`. Asigna el DataFrame directo a la variable `resultado`.
                 
                 RECETARIO DE INTELIGENCIA COMERCIAL (SÍGUELO AL PIE DE LA LETRA):
-                - Si preguntan "¿Cuántas compras/licitaciones únicas hay por cada comprador?": Agrupa por `col_map_final['COMPRADOR_CLAVE']`. Usa `.agg()` para mostrar dos cosas sobre `col_map_final['ID_CLAVE']`: la cantidad única (`nunique`) y una lista real de los IDs involucrados (`unique`). Recuerda usar `.reset_index()` al final para que la tabla se vea perfecta con el nombre del comprador.
+                - Si preguntan "¿Cuántas compras/licitaciones únicas hay por cada comprador?": Agrupa por `col_map_final['COMPRADOR_CLAVE']`. Usa `.agg()` para calcular 'nunique' y 'unique' sobre `col_map_final['ID_CLAVE']`. Aplica `.reset_index()`.
+                - Si preguntan "Dime el detalle de compras del organismo que más gasta": 
+                  Paso 1: Calcula el organismo top: `top_org = df.groupby(col_map_final['COMPRADOR_CLAVE'])[col_map_final['MONTO_REAL']].sum().idxmax()`
+                  Paso 2: Filtra el dataframe: `df_filtrado = df[df[col_map_final['COMPRADOR_CLAVE']] == top_org]`
+                  Paso 3: Selecciona las columnas clave: `cols = [col_map_final['ID_CLAVE'], col_map_final['COMPRADOR_CLAVE'], col_map_final['PROVEEDOR_CLAVE'], col_map_final['MONTO_REAL']] + [c for c in cols_detalle_prod if c in df.columns]`
+                  Paso 4: Asigna a resultado: `resultado = df_filtrado[cols]` (NUNCA mezcles esto con texto, solo entrega la tabla pura).
                 """
                 
                 clean_code = "No se pudo generar código. Posible error de conexión con la IA o límite de API."
