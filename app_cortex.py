@@ -167,21 +167,16 @@ if uploaded_file is not None:
         archivo_gemini = None 
         
         try:
-            # A. CONEXIÓN
-            status_box.info("🔐 Cortex: Verificando encriptación...")
+            # A. CONEXIÓN DIRECTA (AQUÍ ESTÁ LA CORRECCIÓN)
+            status_box.info("🔐 Cortex: Conectando motor AI...")
             if "GOOGLE_API_KEY" in st.secrets:
                 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
             else:
                 st.error("❌ Falta API Key.")
                 st.stop()
             
-            # B. MODELO
-            try:
-                modelos = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                modelo_elegido = next((m for m in modelos if 'flash' in m and '1.5' in m), None) or modelos[0]
-            except:
-                st.error("❌ Error conexión AI.")
-                st.stop()
+            # Asignamos el modelo de forma directa y segura
+            modelo_elegido = 'gemini-2.5-flash'
             
             bar.progress(20)
             
@@ -303,5 +298,5 @@ if uploaded_file is not None:
             robot_spot.markdown('<div class="robot-container robot-zen">🤖</div>', unsafe_allow_html=True)
 
         except Exception as e:
-            st.error(f"❌ Error: {e}")
+            st.error(f"❌ Error en el proceso: {e}")
             robot_spot.markdown('<div class="robot-container robot-zen">😵</div>', unsafe_allow_html=True)
